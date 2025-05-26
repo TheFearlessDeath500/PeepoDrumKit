@@ -5,7 +5,7 @@
 namespace TJA
 {
 	// NOTE: Comment marker stored in the format: "// PeepoDrumKit yyyy/MM/dd"
-	static constexpr std::string_view PeepoDrumKitCommentMarkerPrefix = "PeepoDrumKit";
+	static constexpr std::string_view PeepoDrumKitCommentMarkerPrefix = "TJADB Project";
 
 	static constexpr std::string_view KeyStrings[] =
 	{

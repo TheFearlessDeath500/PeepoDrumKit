@@ -72,10 +72,9 @@ namespace PeepoDrumKit
 		return GuiDragLabelScalar(label, ImGuiDataType_Float, inOutValue, speed, &min, &max, flags);
 	}
 
-	static b8 GuiInputFraction(cstr label, ivec2* inOutValue, std::optional<ivec2> valueRange, i32 step = 0, i32 stepFast = 0, const u32* textColorOverride = nullptr)
+	b8 GuiInputFraction(cstr label, ivec2* inOutValue, std::optional<ivec2> valueRange, i32 step, i32 stepFast, const u32* textColorOverride, std::string_view divisionText)
 	{
 		static constexpr i32 components = 2;
-		static constexpr std::string_view divisionText = " / ";
 		const f32 divisionLabelWidth = Gui::CalcTextSize(Gui::StringViewStart(divisionText), Gui::StringViewEnd(divisionText)).x;
 		const f32 perComponentInputFloatWidth = Floor(((Gui::GetContentRegionAvail().x - divisionLabelWidth) / static_cast<f32>(components)));
 
@@ -352,7 +351,7 @@ namespace PeepoDrumKit
 		Gui::Property::PropertyTextValueFunc(label, [&]
 		{
 			static constexpr i32 components = 2; // NOTE: Unicode "Rightwards Arrow" U+2192
-			static constexpr std::string_view divisionText = "  \xE2\x86\x92  "; // "  ->  "; // " < > ";
+			static constexpr std::string_view divisionText = u8"  →  "; // "  ->  "; // " < > ";
 			const f32 divisionLabelWidth = Gui::CalcTextSize(Gui::StringViewStart(divisionText), Gui::StringViewEnd(divisionText)).x;
 			const f32 perComponentInputFloatWidth = Floor(((Gui::GetContentRegionAvail().x - divisionLabelWidth) / static_cast<f32>(components)));
 
@@ -466,18 +465,18 @@ namespace PeepoDrumKit
 
 		Gui::UpdateSmoothScrollWindow();
 
-		Gui::PushFont(FontLarge_EN);
+		Gui::PushFont(FontMain, GuiScaleI32_AtTarget(FontBaseSizes::Large));
 		{
 			// Header with current version
 			{
 				Gui::PushStyleColor(ImGuiCol_Text, colors.GreenDark);
-				Gui::PushFont(FontLarge_EN);
+				Gui::PushFont(FontMain, GuiScaleI32_AtTarget(FontBaseSizes::Large));
 				Gui::TextUnformatted("Update Notes");
 				Gui::PopFont();
 				Gui::PopStyleColor();
 
 				Gui::PushStyleColor(ImGuiCol_Text, colors.GreenBright);
-				Gui::PushFont(FontMedium_EN);
+				Gui::PushFont(FontMain, GuiScaleI32_AtTarget(FontBaseSizes::Medium));
 				Gui::Text("Current version: %s", BuildInfo::CurrentVersion());
 				Gui::Separator();
 				Gui::PopFont();
@@ -487,19 +486,90 @@ namespace PeepoDrumKit
 			// Update Log wrapper
 			{
 				Gui::PushStyleColor(ImGuiCol_Text, colors.RedDark);
-				Gui::PushFont(FontLarge_EN);
+				Gui::PushFont(FontMain, GuiScaleI32_AtTarget(FontBaseSizes::Large));
 				Gui::TextUnformatted("Update Logs:");
 				Gui::PopFont();
 				Gui::PopStyleColor();
 
+				// v1.2
+				{
+					Gui::PushStyleColor(ImGuiCol_Text, colors.RedBright);
+					Gui::PushFont(FontMain, GuiScaleI32_AtTarget(FontBaseSizes::Medium));
+					Gui::TextUnformatted("v1.2");
+					Gui::PopFont();
+
+					Gui::PushFont(FontMain, GuiScaleI32_AtTarget(FontBaseSizes::Small));
+					Gui::TextUnformatted(u8"- Add the possibility to reorder difficulties by dragging difficulty tabs");
+					Gui::TextUnformatted(u8"- Add support for STYLE: and #START P<n>");
+					Gui::TextUnformatted(u8"- Add comparison mode to compare difficulties side-by-side");
+					Gui::TextUnformatted(u8"- Add current #JPOSSCROLL position display on the judge mark");
+					Gui::TextUnformatted(u8"- The gameplay lane border now show the visible region in simulators when in wide view");
+					Gui::TextUnformatted(u8"- Add sound volume limiter and remove sound effects' play frequency limits");
+					Gui::TextUnformatted(u8"- AdLibs are now shown semi-transparent instead of hidden");
+					Gui::TextUnformatted(u8"- KaDon are now played with Don + Ka sounds instead of just Don");
+					Gui::TextUnformatted(u8"- Balloon-type notes' pop count is now shown when they are being popped");
+					Gui::TextUnformatted(u8"- Add “Buffer Frame Size” option for manually fixing audio distortion due to insufficient buffer size (in Settings → Audio Settings)");
+					Gui::TextUnformatted(u8"- Add proper SENote assignment and the コ (Ko) SENote");
+					Gui::TextUnformatted(u8"- Add Go-go time effect");
+					Gui::TextUnformatted(u8"- Add support for editing any localized TITLE: and SUBTITLE: with custom locales");
+					Gui::TextUnformatted(u8"- Fix #JPOSSCROLL's overlapping behavior (was not stopped by next #JPOSSCROLL as in simulators)");
+					Gui::TextUnformatted(u8"- Add support for the Handed Don (A) and Handed Katsu (B) notes");
+					Gui::TextUnformatted(u8"- Remove restriction of creating existing difficulties, for creating multiplayer charts and using comparison mode");
+					Gui::TextUnformatted(u8"- Fix inaccurate time interval of balloon-type note popping sound");
+					Gui::TextUnformatted(u8"- Add support for editing any unknown TJA headers");
+					Gui::TextUnformatted(u8"- Add support for number-less NOTESDESIGNER: and file-scope usage of numbered NOTESDESIGNER headers");
+					Gui::TextUnformatted(u8"- Fix notes in negative BPM were wrongly flipped horizontally and SENotes in positive BPM were wrongly rotated 180 degree");
+					Gui::TextUnformatted(u8"- (the following are hotfixes)");
+					Gui::TextUnformatted(u8"- Fix crash when player side and count numbers are too long");
+					Gui::TextUnformatted(u8"- Fix compared lanes wrongly used selected lane's beat and time position if their timing commands differ");
+					Gui::TextUnformatted(u8"- Fix flying notes moved with on-going #JPOSSCROLLs again due to reworking of #JPOSSCROLL in v1.2");
+					Gui::TextUnformatted(u8"- Fix undefined default Chart Stats tab docking position since v1.1.1");
+					Gui::TextUnformatted(u8"- (for the full change list, please refer to the commit history)");
+					Gui::TextUnformatted("");
+					Gui::PopFont();
+					Gui::PopStyleColor();
+				}
+
+				// v1.1.1
+				{
+					Gui::PushStyleColor(ImGuiCol_Text, colors.RedBright);
+					Gui::PushFont(FontMain, GuiScaleI32_AtTarget(FontBaseSizes::Medium));
+					Gui::TextUnformatted("v1.1.1");
+					Gui::PopFont();
+
+					Gui::PushFont(FontMain, GuiScaleI32_AtTarget(FontBaseSizes::Small));
+					Gui::TextUnformatted(u8"- Fix notes' and bar lines' position in #HBSCROLL and #BMSCROLL (when past judgement or around #BPMCHANGEs)");
+					Gui::TextUnformatted(u8"- Fix #JPOSSCROLL distance (was 720px/lane instead of simulators' 948px/lane), direction 0 mode (failed to flip vertically)");
+					Gui::TextUnformatted(u8"- Fix could not set #JPOSSCROLL duration in Chart Inspector");
+					Gui::TextUnformatted(u8"- Improve compatibility and performance of chart importing and exporting");
+					Gui::TextUnformatted(u8"- Widen allowed BPM's and time signature's input and effective range (negative allowed)");
+					Gui::TextUnformatted(u8"- Add .ini localization; add zh-CN and zh-TW localizations");
+					Gui::TextUnformatted(u8"- Fix displayed position of balloons and flying notes with non-positive #SCROLL");
+					Gui::TextUnformatted(u8"- Add TaikoJiro2-like note display supporting complex-valued #SCROLL and stretching rolls with bar");
+					Gui::TextUnformatted(u8"- Add the possibility to edit notes' and long events' end position by dragging their end when selected");
+					Gui::TextUnformatted(u8"- #JPOSSCROLL is now visualized and editable as long event");
+					Gui::TextUnformatted(u8"- Widen playback speed range to 10%–200%");
+					Gui::TextUnformatted(u8"- Add Chart Stats tab");
+					Gui::TextUnformatted(u8"- Tweak difficulty number display and remove star view for decimal");
+					Gui::TextUnformatted(u8"- Add support of editing Tower charts and view Dan charts");
+					Gui::TextUnformatted(u8"- Add “Insert at Selected Items”, the successor of “Selection to Scroll Changes” which applies to all chart events");
+					Gui::TextUnformatted(u8"- Migrate to Dear ImGui 1.92.0-docking and solve missing font glyph issues");
+					Gui::TextUnformatted(u8"- Add “Select to End of Chart”");
+					Gui::TextUnformatted(u8"- Add advanced chart scale options, fix “missing notes after undo” problem when scaling");
+					Gui::TextUnformatted(u8"- (for the full change list, please refer to the commit history)");
+					Gui::TextUnformatted("");
+					Gui::PopFont();
+					Gui::PopStyleColor();
+				}
+
 				// v1.1
 				{
 					Gui::PushStyleColor(ImGuiCol_Text, colors.RedBright);
-					Gui::PushFont(FontMedium_EN);
+					Gui::PushFont(FontMain, GuiScaleI32_AtTarget(FontBaseSizes::Medium));
 					Gui::TextUnformatted("v1.1");
 					Gui::PopFont();
 
-					Gui::PushFont(FontMain_CJKV);
+					Gui::PushFont(FontMain, GuiScaleI32_AtTarget(FontBaseSizes::Small));
 					Gui::TextUnformatted("- Add support for #HBSCROLL and #BMSCROLL methods");
 					Gui::TextUnformatted("- Add support for the #JPOSSCROLL gimmick");
 					Gui::TextUnformatted("- Add support for complex #SCROLL changes (y axis)");
@@ -516,11 +586,11 @@ namespace PeepoDrumKit
 				// v1.0
 				{
 					Gui::PushStyleColor(ImGuiCol_Text, colors.RedBright);
-					Gui::PushFont(FontMedium_EN);
+					Gui::PushFont(FontMain, GuiScaleI32_AtTarget(FontBaseSizes::Medium));
 					Gui::TextUnformatted("v1.0");
 					Gui::PopFont();
 
-					Gui::PushFont(FontMain_CJKV);
+					Gui::PushFont(FontMain, GuiScaleI32_AtTarget(FontBaseSizes::Small));
 					Gui::TextUnformatted("- Add support for the Bomb (C) note");
 					Gui::TextUnformatted("- Add support for the Fuseroll (D) note");
 					Gui::TextUnformatted("- Add support for the ADLib (F) note");
@@ -565,24 +635,24 @@ namespace PeepoDrumKit
 
 		Gui::UpdateSmoothScrollWindow();
 
-		Gui::PushFont(FontLarge_EN);
+		Gui::PushFont(FontMain, GuiScaleI32_AtTarget(FontBaseSizes::Large));
 		{
 			// Header with chart main information
 			{
 				Gui::PushStyleColor(ImGuiCol_Text, colors.GreenDark);
-				Gui::PushFont(FontLarge_EN);
+				Gui::PushFont(FontMain, GuiScaleI32_AtTarget(FontBaseSizes::Large));
 				Gui::TextUnformatted("Chart Stats");
 				Gui::PopFont();
 				Gui::PopStyleColor();
 
 				Gui::PushStyleColor(ImGuiCol_Text, colors.GreenBright);
-				Gui::PushFont(FontMedium_EN);
-				Gui::Text("%s", chart.ChartTitle.Base().c_str());
+				Gui::PushFont(FontMain, GuiScaleI32_AtTarget(FontBaseSizes::Medium));
+				Gui::Text("%s", chart.ChartTitle.c_str());
 				Gui::PopFont();
-				Gui::PushFont(FontMain_CJKV);
-				Gui::Text("%s", trimPrefix(chart.ChartSubtitle.Base()).c_str());
+				Gui::PushFont(FontMain, GuiScaleI32_AtTarget(FontBaseSizes::Small));
+				Gui::Text("%s", trimPrefix(chart.ChartSubtitle).c_str());
 				Gui::Text("Charter: %s", course.CourseCreator.c_str());
-				Gui::Text("%s Lv.%d", UI_StrRuntime(DifficultyTypeNames[(int)course.Type]), course.Level);
+				Gui::Text("%s Lv.%d %s", UI_StrRuntime(DifficultyTypeNames[(int)course.Type]), course.Level, GetStyleName(course.Style, course.PlayerSide).c_str());
 				Gui::Separator();
 				Gui::PopFont();
 				Gui::PopStyleColor();
@@ -602,12 +672,12 @@ namespace PeepoDrumKit
 				f64 _density = _maxCombo / chart.ChartDuration.Seconds;
 
 				Gui::PushStyleColor(ImGuiCol_Text, colors.RedDark);
-				Gui::PushFont(FontLarge_EN);
+				Gui::PushFont(FontMain, GuiScaleI32_AtTarget(FontBaseSizes::Large));
 				Gui::Text("Max Combo: %d", _maxCombo);
 				Gui::PopFont();
 				Gui::PopStyleColor();
 
-				Gui::PushFont(FontMedium_EN);
+				Gui::PushFont(FontMain, GuiScaleI32_AtTarget(FontBaseSizes::Medium));
 
 				Gui::PushStyleColor(ImGuiCol_Text, colors.RedDark);
 				Gui::Text("Density: %.3f hit/s", _density);
@@ -676,17 +746,17 @@ namespace PeepoDrumKit
 		Gui::UpdateSmoothScrollWindow();
 
 		// TODO: Maybe use .md markup language to write instructions (?) (how feasable would it be to integrate peepo emotes inbetween text..?)
-		Gui::PushFont(FontLarge_EN);
+		Gui::PushFont(FontMain, GuiScaleI32_AtTarget(FontBaseSizes::Large));
 		{
 			{
 				Gui::PushStyleColor(ImGuiCol_Text, colors.GreenDark);
-				Gui::PushFont(FontLarge_EN);
+				Gui::PushFont(FontMain, GuiScaleI32_AtTarget(FontBaseSizes::Large));
 				Gui::TextUnformatted("Welcome to Peepo Drum Kit (Unofficial fork)");
 				Gui::PopFont();
 				Gui::PopStyleColor();
 
 				Gui::PushStyleColor(ImGuiCol_Text, colors.GreenBright);
-				Gui::PushFont(FontMedium_EN);
+				Gui::PushFont(FontMain, GuiScaleI32_AtTarget(FontBaseSizes::Medium));
 				Gui::TextWrapped("Things are still very much WIP and subject to change with some features still missing " UTF8_FeelsOkayMan);
 				Gui::Separator();
 				Gui::TextUnformatted("");
@@ -696,13 +766,13 @@ namespace PeepoDrumKit
 
 			{
 				Gui::PushStyleColor(ImGuiCol_Text, colors.RedDark);
-				Gui::PushFont(FontMedium_EN);
+				Gui::PushFont(FontMain, GuiScaleI32_AtTarget(FontBaseSizes::Medium));
 				Gui::TextUnformatted("Basic Controls:");
 				Gui::PopFont();
 				Gui::PopStyleColor();
 
 				Gui::PushStyleColor(ImGuiCol_Text, colors.RedBright);
-				Gui::PushFont(FontMain_CJKV);
+				Gui::PushFont(FontMain, GuiScaleI32_AtTarget(FontBaseSizes::Small));
 				if (Gui::BeginTable("ControlsTable", 2, ImGuiTableFlags_BordersInner | ImGuiTableFlags_NoSavedSettings))
 				{
 					static constexpr auto row = [&](auto funcLeft, auto funcRight)
@@ -756,7 +826,7 @@ namespace PeepoDrumKit
 			}
 
 			{
-				Gui::PushFont(FontMedium_EN);
+				Gui::PushFont(FontMain, GuiScaleI32_AtTarget(FontBaseSizes::Medium));
 				Gui::PushStyleColor(ImGuiCol_Text, colors.WhiteDark);
 				Gui::TextUnformatted("");
 				Gui::TextUnformatted("About reading and writing TJAs:");
@@ -806,7 +876,7 @@ namespace PeepoDrumKit
 
 		if (Gui::BeginTable("UndoHistoryTable", 2, ImGuiTableFlags_NoSavedSettings | ImGuiTableFlags_Borders | ImGuiTableFlags_ScrollY, Gui::GetContentRegionAvail()))
 		{
-			Gui::PushFont(FontMedium_EN);
+			Gui::PushFont(FontMain, GuiScaleI32_AtTarget(FontBaseSizes::Medium));
 			Gui::TableSetupScrollFreeze(0, 1);
 			Gui::TableSetupColumn(UI_Str("UNDO_HISTORY_DESCRIPTION"), ImGuiTableColumnFlags_None);
 			Gui::TableSetupColumn(UI_Str("UNDO_HISTORY_TIME"), ImGuiTableColumnFlags_None);
@@ -883,7 +953,7 @@ namespace PeepoDrumKit
 			const b8 resetPressed = windowFocused && Gui::IsAnyPressed(*Settings.Input.TempoCalculator_Reset, false);
 			const b8 resetDown = windowFocused && Gui::IsAnyDown(*Settings.Input.TempoCalculator_Reset);
 
-			Gui::PushFont(FontLarge_EN);
+			Gui::PushFont(FontMain, GuiScaleI32_AtTarget(FontBaseSizes::Large));
 			{
 				const Time lastBeatDuration = Time::FromSec(60.0 / Round(Calculator.LastTempo.BPM));
 				const f32 tapBeatLerpT = ImSaturate((Calculator.TapCount == 0) ? 1.0f : static_cast<f32>(Calculator.LastTap.GetElapsed() / lastBeatDuration));
@@ -919,7 +989,7 @@ namespace PeepoDrumKit
 		Gui::PopStyleColor(3);
 		Gui::PopStyleVar(1);
 
-		Gui::PushFont(FontMedium_EN);
+		Gui::PushFont(FontMain, GuiScaleI32_AtTarget(FontBaseSizes::Medium));
 		if (Gui::BeginTable("Table", 2, ImGuiTableFlags_BordersInner | ImGuiTableFlags_NoSavedSettings, Gui::GetContentRegionAvail()))
 		{
 			cstr formatStrBPM_g = (Calculator.TapCount > 1) ? "%g BPM" : "--.-- BPM";
@@ -1063,7 +1133,7 @@ namespace PeepoDrumKit
 
 			if (SelectedItems.empty())
 			{
-				Gui::PushFont(FontLarge_EN);
+				Gui::PushFont(FontMain, GuiScaleI32_AtTarget(FontBaseSizes::Large));
 				Gui::PushItemFlag(ImGuiItemFlags_Disabled, true);
 				Gui::PushStyleColor(ImGuiCol_Text, Gui::GetColorU32(ImGuiCol_TextDisabled));
 				Gui::PushStyleColor(ImGuiCol_Button, 0x00000000);
@@ -1572,7 +1642,7 @@ namespace PeepoDrumKit
 						case GenericMember::NoteType_V:
 						{
 							b8 isAnyRegularNoteSelected = false, isAnyDrumrollNoteSelected = false, isAnyBalloonNoteSelected = false;
-							b8 areAllSelectedNotesSmall = true, areAllSelectedNotesBig = true;
+							b8 areAllSelectedNotesSmall = true, areAllSelectedNotesBig = true, areAllSelectedNotesHand = true;
 							b8 perNoteTypeHasAtLeastOneSelected[EnumCount<NoteType>] = {};
 							for (const auto& selectedItem : SelectedItems)
 							{
@@ -1582,12 +1652,17 @@ namespace PeepoDrumKit
 								isAnyBalloonNoteSelected |= IsBalloonNote(noteType);
 								areAllSelectedNotesSmall &= IsSmallNote(noteType);
 								areAllSelectedNotesBig &= IsBigNote(noteType);
+								areAllSelectedNotesHand &= IsHandNote(noteType);
 								perNoteTypeHasAtLeastOneSelected[EnumToIndex(noteType)] = true;
 							}
 
 							Gui::Property::PropertyTextValueFunc(UI_Str("EVENT_PROP_NOTE_TYPE"), [&]
 							{
-								const cstr noteTypeNames[] = { UI_Str("NOTE_TYPE_DON"), UI_Str("NOTE_TYPE_DON_BIG"), UI_Str("NOTE_TYPE_KA"), UI_Str("NOTE_TYPE_KA_BIG"), UI_Str("NOTE_TYPE_DRUMROLL"), UI_Str("NOTE_TYPE_DRUMROLL_BIG"), UI_Str("NOTE_TYPE_BALLOON"), UI_Str("NOTE_TYPE_BALLOON_EX"), UI_Str("NOTE_TYPE_KADON"), UI_Str("NOTE_TYPE_BOMB"), UI_Str("NOTE_TYPE_ADLIB"), UI_Str("NOTE_TYPE_FUSEROLL") };
+								const cstr noteTypeNames[] = { UI_Str("NOTE_TYPE_DON"), UI_Str("NOTE_TYPE_DON_BIG"), UI_Str("NOTE_TYPE_KA"), UI_Str("NOTE_TYPE_KA_BIG"),
+									UI_Str("NOTE_TYPE_DRUMROLL"), UI_Str("NOTE_TYPE_DRUMROLL_BIG"), UI_Str("NOTE_TYPE_BALLOON"), UI_Str("NOTE_TYPE_BALLOON_EX"),
+									UI_Str("NOTE_TYPE_DON_HAND"), UI_Str("NOTE_TYPE_KA_HAND"),
+									UI_Str("NOTE_TYPE_KADON"), UI_Str("NOTE_TYPE_BOMB"), UI_Str("NOTE_TYPE_ADLIB"), UI_Str("NOTE_TYPE_FUSEROLL"),
+								};
 
 								static_assert(ArrayCount(noteTypeNames) == EnumCount<NoteType>);
 
@@ -1633,9 +1708,12 @@ namespace PeepoDrumKit
 
 							Gui::Property::PropertyTextValueFunc(UI_Str("EVENT_PROP_NOTE_TYPE_SIZE"), [&]
 							{
-								enum class NoteSizeType { Small, Big, Count };
-								const cstr noteSizeTypeNames[] = { UI_Str("NOTE_TYPE_SIZE_SMALL"), UI_Str("NOTE_TYPE_SIZE_BIG"), };
-								auto v = (!areAllSelectedNotesSmall && !areAllSelectedNotesBig) ? NoteSizeType::Count : IsBigNote(sharedValues.NoteType()) ? NoteSizeType::Big : NoteSizeType::Small;
+								enum class NoteSizeType { Small, Big, Hand, Count };
+								const cstr noteSizeTypeNames[] = { UI_Str("NOTE_TYPE_SIZE_SMALL"), UI_Str("NOTE_TYPE_SIZE_BIG"), UI_Str("NOTE_TYPE_SIZE_HAND"), };
+								auto v = !(areAllSelectedNotesSmall || areAllSelectedNotesBig || areAllSelectedNotesHand) ? NoteSizeType::Count
+									: IsHandNote(sharedValues.NoteType()) ? NoteSizeType::Hand
+									: IsBigNote(sharedValues.NoteType()) ? NoteSizeType::Big
+									: NoteSizeType::Small;
 
 								Gui::PushItemWidth(-1.0f);
 								if (Gui::ComboEnum("##NoteTypeIsBig", &v, noteSizeTypeNames, ImGuiComboFlags_None))
@@ -1643,7 +1721,10 @@ namespace PeepoDrumKit
 									for (auto& selectedItem : SelectedItems)
 									{
 										auto& inOutNoteType = selectedItem.MemberValues.NoteType();
-										inOutNoteType = (v == NoteSizeType::Big) ? ToBigNote(inOutNoteType) : (v == NoteSizeType::Small) ? ToSmallNote(inOutNoteType) : inOutNoteType;
+										inOutNoteType = (v == NoteSizeType::Hand) ? ToHandNote(inOutNoteType)
+											: (v == NoteSizeType::Big) ? ToBigNote(inOutNoteType)
+											: (v == NoteSizeType::Small) ? ToSmallNote(inOutNoteType)
+											: inOutNoteType;
 									}
 									valueWasChanged = true;
 									disableChangePropertiesCommandMerge = true;
@@ -1794,6 +1875,111 @@ namespace PeepoDrumKit
 		}
 	}
 
+
+	// ImGui #3565
+	static f32 TableFullRowBegin()
+	{
+		ImGuiTable* table = Gui::GetCurrentTable();
+		Gui::TableSetColumnIndex((table->LeftMostEnabledColumn >= 0) ? table->LeftMostEnabledColumn : 0);
+		ImRect* workRect = &Gui::GetCurrentWindow()->WorkRect;
+		f32 restore_x = workRect->Max.x;
+		ImRect bgClipRect = table->BgClipRect;
+		Gui::PushClipRect(bgClipRect.Min, bgClipRect.Max, false);
+		workRect->Max.x = bgClipRect.Max.x;
+		return restore_x;
+	}
+
+	static void TableFullRowEnd(f32 restore_x)
+	{
+		Gui::GetCurrentWindow()->WorkRect.Max.x = restore_x;
+		Gui::PopClipRect();
+	}
+
+	static float getInsertButtonWidth()
+	{
+		return std::max(1.0f, ImGui::GetContentRegionAvail().x - 1 - Gui::GetStyle().ItemInnerSpacing.x - Gui::GetFrameHeight());
+	}
+
+	template <typename FCharFilter, typename FKeyFilter>
+	static void PropertyMapCollapsingHeader(ChartContext& context, const char* label, std::map<std::string, std::string>& properties,
+		const char* labelAdd, std::string* pNewKey, FCharFilter&& charFilter, FKeyFilter&& keyFilter, const std::string& newDefault)
+	{
+		ImGuiTable* table = Gui::GetCurrentTable();
+		Gui::TableNextRow();
+		f32 restoreX = TableFullRowBegin();
+		if (Gui::CollapsingHeader(label, ImGuiTreeNodeFlags_DefaultOpen)) {
+			if (Gui::Property::BeginTable(ImGuiTableFlags_BordersInner)) {
+				const std::string* localeToRemove = nullptr;
+				for (auto&& [key, val] : properties) {
+					Gui::Property::PropertyTextValueFunc(key, [&]
+					{
+						Gui::SetNextItemWidth(getInsertButtonWidth());
+						if (Gui::InputTextWithHint(("##" + key).c_str(), "n/a", &val))
+							context.Undo.NotifyChangesWereMade();
+						Gui::SameLine(0, Gui::GetStyle().ItemInnerSpacing.x);
+						if (Gui::Button(("-##" + key).c_str(), {Gui::GetFrameHeight(), Gui::GetFrameHeight()}))
+							localeToRemove = &key;
+						Gui::SetItemTooltip(UI_Str("ACT_EVENT_REMOVE"));
+					});
+				}
+				if (localeToRemove != nullptr) {
+					properties.erase(*localeToRemove);
+					context.Undo.NotifyChangesWereMade();
+				}
+				// add new entry
+				Gui::Property::PropertyTextValueFunc(labelAdd, [&]
+				{
+					b8* pIsValid = Gui::GetStateStorage()->GetBoolRef(reinterpret_cast<ImGuiID>(pNewKey), keyFilter(newDefault));
+
+					Gui::SetNextItemWidth(getInsertButtonWidth());
+					Gui::PushStyleColor(ImGuiCol_Text, *pIsValid ? Gui::GetColorU32(ImGuiCol_Text) : InputTextWarningTextColor);
+					b8 shouldAdd = Gui::InputTextWithHint("##new", newDefault.c_str(), pNewKey, ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_CallbackCharFilter, charFilter);
+					if (Gui::IsItemEdited())
+						*pIsValid = keyFilter(!pNewKey->empty() ? *pNewKey : newDefault);
+					Gui::PopStyleColor();
+
+					Gui::SameLine(0, Gui::GetStyle().ItemInnerSpacing.x);
+					Gui::BeginDisabled(!*pIsValid);
+					if ((Gui::Button("+", { Gui::GetFrameHeight(), Gui::GetFrameHeight() }) || shouldAdd) && *pIsValid) {
+						if (!pNewKey->empty()) {
+							properties.try_emplace(std::move(*pNewKey), "");
+							*pNewKey = "";
+						}
+						else if (!newDefault.empty())
+							properties.try_emplace(newDefault, "");
+						context.Undo.NotifyChangesWereMade();
+					}
+					Gui::SetItemTooltip(UI_Str("ACT_EVENT_ADD"));
+					Gui::EndDisabled();
+				});
+				Gui::EndTable();
+			}
+		}
+		TableFullRowEnd(restoreX);
+	}
+
+	static void LocalizedPropertyCollapsingHeader(ChartContext& context, const char* label, std::map<std::string, std::string>& propertyLocalized, std::string* pNewLocale)
+	{
+		static constexpr auto charFilter = [](ImGuiInputTextCallbackData* data) -> int
+		{
+			data->EventChar = ASCII::IETFLangTagToTJALangTag(data->EventChar);
+			return 0;
+		};
+		static constexpr auto keyFilter = [](std::string_view in) { return std::regex_match(std::begin(in), std::end(in), ASCII::PatIETFLangTagForTJA); };
+		PropertyMapCollapsingHeader(context, label, propertyLocalized, UI_Str("ACT_ADD_NEW_LOCALE"), pNewLocale, charFilter, keyFilter, SelectedGuiLanguageTJA);
+	}
+
+	static void OtherMetadataCollapsingHeader(ChartContext& context, const char* label, std::map<std::string, std::string>& otherMetadata, std::string* pNewMetadataKey)
+	{
+		static constexpr auto charFilter = [](ImGuiInputTextCallbackData* data) -> int
+		{
+			data->EventChar = ASCII::IETFLangTagToTJALangTag(data->EventChar); // TJA-ize
+			return 0;
+		};
+		static constexpr auto keyFilter = [](std::string_view in) { return !in.empty() && (TJA::GetKeyColonValueTokenKey(in) == TJA::Key::Course_Unknown); };
+		PropertyMapCollapsingHeader(context, label, otherMetadata, UI_Str("ACT_ADD_NEW_METADATA"), pNewMetadataKey, charFilter, keyFilter, "");
+	}
+
 	void ChartPropertiesWindow::DrawGui(ChartContext& context, const ChartPropertiesWindowIn& in, ChartPropertiesWindowOut& out)
 	{
 		Gui::UpdateSmoothScrollWindow();
@@ -1806,18 +1992,23 @@ namespace PeepoDrumKit
 		{
 			if (Gui::Property::BeginTable(ImGuiTableFlags_BordersInner))
 			{
+
 				Gui::Property::PropertyTextValueFunc(UI_Str("CHART_PROP_TITLE"), [&]
 				{
 					Gui::SetNextItemWidth(-1.0f);
-					if (Gui::InputTextWithHint("##ChartTitle", "n/a", &chart.ChartTitle.Base()))
+					if (Gui::InputTextWithHint("##ChartTitle", "n/a", &chart.ChartTitle))
 						context.Undo.NotifyChangesWereMade();
 				});
+				static std::string newTitleLocale = "";
+				LocalizedPropertyCollapsingHeader(context, UI_Str("DETAILS_CHART_PROP_TITLE_LOCALIZED"), chart.ChartTitleLocalized, &newTitleLocale);
 				Gui::Property::PropertyTextValueFunc(UI_Str("CHART_PROP_SUBTITLE"), [&]
 				{
 					Gui::SetNextItemWidth(-1.0f);
-					if (Gui::InputTextWithHint("##ChartSubtitle", "n/a", &chart.ChartSubtitle.Base()))
+					if (Gui::InputTextWithHint("##ChartSubtitle", "n/a", &chart.ChartSubtitle))
 						context.Undo.NotifyChangesWereMade();
 				});
+				static std::string newSubtitleLocale = "";
+				LocalizedPropertyCollapsingHeader(context, UI_Str("DETAILS_CHART_PROP_SUBTITLE_LOCALIZED"), chart.ChartSubtitleLocalized, &newSubtitleLocale);
 				Gui::Property::PropertyTextValueFunc(UI_Str("CHART_PROP_CREATOR"), [&]
 				{
 					Gui::SetNextItemWidth(-1.0f);
@@ -1885,6 +2076,8 @@ namespace PeepoDrumKit
 						context.Undo.NotifyChangesWereMade();
 					}
 				});
+				static std::string newChartMetadataKey = "";
+				OtherMetadataCollapsingHeader(context, UI_Str("DETAILS_CHART_PROP_OTHER_METADATA"), chart.OtherMetadata, &newChartMetadataKey);
 				Gui::Property::EndTable();
 			}
 		}
@@ -1915,6 +2108,18 @@ namespace PeepoDrumKit
 						if (GuiDifficultyDecimalLevelStarSliderWidget("##DifficultyLevelDecimal", &course.Decimal, DifficultySliderStarsFitOnScreenLastFrame, DifficultySliderStarsWasHoveredLastFrame))
 							context.Undo.NotifyChangesWereMade();
 				});
+				Gui::Property::PropertyTextValueFunc(UI_Str("COURSE_PROP_PLAYER_SIDE_COUNT"), [&]
+				{
+					Gui::SetNextItemWidth(-1.0f);
+
+					if (ivec2 v = { course.PlayerSide, course.Style };
+						GuiInputFraction("##PlayerSideCount", &v, {}, 1, 5, nullptr)
+						) {
+						course.Style = std::max(v[1], 1);
+						course.PlayerSide = std::clamp(v[0], 1, course.Style);
+						context.Undo.NotifyChangesWereMade();
+					}
+				});
 
 				// Tower
 				if (course.Type == DifficultyType::Tower) {
@@ -1928,9 +2133,9 @@ namespace PeepoDrumKit
 					
 					Gui::Property::PropertyTextValueFunc(UI_Str("COURSE_PROP_TOWER_SIDE"), [&]
 						{
-							cstr sideNames[ArrayCount(SideNames)];
-							for (size_t i = 0; i < ArrayCount(SideNames); i++)
-								sideNames[i] = UI_StrRuntime(SideNames[i]);
+							cstr sideNames[ArrayCount(TowerSideNames)];
+							for (size_t i = 0; i < ArrayCount(TowerSideNames); i++)
+								sideNames[i] = UI_StrRuntime(TowerSideNames[i]);
 
 							Gui::SetNextItemWidth(-1.0f);
 							if (Gui::ComboEnum("##TowerSide", &course.Side, sideNames))
@@ -1949,6 +2154,10 @@ namespace PeepoDrumKit
 					if (Gui::InputTextWithHint("##CourseCreator", hint, &course.CourseCreator))
 						context.Undo.NotifyChangesWereMade();
 				});
+
+				static std::string newCourseMetadataKey = "";
+				OtherMetadataCollapsingHeader(context, UI_Str("DETAILS_COURSE_PROP_OTHER_METADATA"), course.OtherMetadata, &newCourseMetadataKey);
+
 				Gui::Property::EndTable();
 			}
 		}
@@ -2016,11 +2225,6 @@ namespace PeepoDrumKit
 			ImGui::SetTooltip(tooltip_key);
 		}
 		return res;
-	}
-
-	static float getInsertButtonWidth()
-	{
-		return std::max(1.0f, ImGui::GetContentRegionAvail().x - 1 - Gui::GetStyle().ItemInnerSpacing.x - Gui::GetFrameHeight());
 	}
 
 	void ChartTempoWindow::DrawGui(ChartContext& context, ChartTimeline& timeline)
@@ -2135,9 +2339,9 @@ namespace PeepoDrumKit
 				auto insertOrUpdateCursorTempoChange = [&](Tempo newTempo)
 				{
 					if (tempoChangeAtCursor == nullptr || tempoChangeAtCursor->Beat != cursorBeat)
-						context.Undo.Execute<Commands::AddTempoChange>(&course.TempoMap, TempoChange(cursorBeat, newTempo));
+						context.Undo.Execute<Commands::AddTempoChange>(&course, &course.TempoMap, TempoChange(cursorBeat, newTempo));
 					else
-						context.Undo.Execute<Commands::UpdateTempoChange>(&course.TempoMap, TempoChange(cursorBeat, newTempo));
+						context.Undo.Execute<Commands::UpdateTempoChange>(&course, &course.TempoMap, TempoChange(cursorBeat, newTempo));
 				};
 
 				Gui::Property::Property([&]
@@ -2159,7 +2363,7 @@ namespace PeepoDrumKit
 					if (!disallowRemoveButton && tempoChangeAtCursor != nullptr && tempoChangeAtCursor->Beat == cursorBeat)
 					{
 						if (Gui::Button(UI_Str("ACT_EVENT_REMOVE"), { getInsertButtonWidth(), 0.0f }))
-							context.Undo.Execute<Commands::RemoveTempoChange>(&course.TempoMap, cursorBeat);
+							context.Undo.Execute<Commands::RemoveTempoChange>(&course, &course.TempoMap, cursorBeat);
 					}
 					else
 					{
@@ -2185,9 +2389,9 @@ namespace PeepoDrumKit
 					{
 						// TODO: Also floor cursor beat to next whole bar (?)
 						if (signatureChangeAtCursor == nullptr || signatureChangeAtCursor->Beat != cursorBeat)
-							context.Undo.Execute<Commands::AddTimeSignatureChange>(&course.TempoMap, TimeSignatureChange(cursorBeat, newSignature));
+							context.Undo.Execute<Commands::AddTimeSignatureChange>(&course, &course.TempoMap, TimeSignatureChange(cursorBeat, newSignature));
 						else
-							context.Undo.Execute<Commands::UpdateTimeSignatureChange>(&course.TempoMap, TimeSignatureChange(cursorBeat, newSignature));
+							context.Undo.Execute<Commands::UpdateTimeSignatureChange>(&course, &course.TempoMap, TimeSignatureChange(cursorBeat, newSignature));
 					};
 
 					Gui::BeginDisabled(disableEditingAtPlayCursor);
@@ -2200,7 +2404,7 @@ namespace PeepoDrumKit
 					if (!disallowRemoveButton && signatureChangeAtCursor != nullptr && signatureChangeAtCursor->Beat == cursorBeat)
 					{
 						if (Gui::Button(UI_Str("ACT_EVENT_REMOVE"), { getInsertButtonWidth(), 0.0f }))
-							context.Undo.Execute<Commands::RemoveTimeSignatureChange>(&course.TempoMap, cursorBeat);
+							context.Undo.Execute<Commands::RemoveTimeSignatureChange>(&course, &course.TempoMap, cursorBeat);
 					}
 					else
 					{
@@ -2223,9 +2427,9 @@ namespace PeepoDrumKit
 				auto insertOrUpdateCursorScrollSpeedChange = [&](Complex newScrollSpeed)
 				{
 					if (scrollChangeChangeAtCursor == nullptr || scrollChangeChangeAtCursor->BeatTime != cursorBeat)
-						context.Undo.Execute<Commands::AddScrollChange>(&course.ScrollChanges, ScrollChange { cursorBeat, newScrollSpeed });
+						context.Undo.Execute<Commands::AddScrollChange>(&course, &course.ScrollChanges, ScrollChange { cursorBeat, newScrollSpeed });
 					else
-						context.Undo.Execute<Commands::UpdateScrollChange>(&course.ScrollChanges, ScrollChange { cursorBeat, newScrollSpeed });
+						context.Undo.Execute<Commands::UpdateScrollChange>(&course, &course.ScrollChanges, ScrollChange { cursorBeat, newScrollSpeed });
 				};
 
 				Gui::Property::Property([&]
@@ -2266,7 +2470,7 @@ namespace PeepoDrumKit
 					if (!disallowRemoveButton && scrollChangeChangeAtCursor != nullptr && scrollChangeChangeAtCursor->BeatTime == cursorBeat)
 					{
 						if (Gui::Button(UI_Str("ACT_EVENT_REMOVE"), { getInsertButtonWidth(), 0.0f }))
-							context.Undo.Execute<Commands::RemoveScrollChange>(&course.ScrollChanges, cursorBeat);
+							context.Undo.Execute<Commands::RemoveScrollChange>(&course, &course.ScrollChanges, cursorBeat);
 					}
 					else
 					{
@@ -2290,9 +2494,9 @@ namespace PeepoDrumKit
 					auto insertOrUpdateCursorBarLineChange = [&](i8 newVisibility)
 					{
 						if (barLineChangeAtCursor == nullptr || barLineChangeAtCursor->BeatTime != cursorBeat)
-							context.Undo.Execute<Commands::AddBarLineChange>(&course.BarLineChanges, BarLineChange { cursorBeat, newVisibility == 0 });
+							context.Undo.Execute<Commands::AddBarLineChange>(&course, &course.BarLineChanges, BarLineChange { cursorBeat, newVisibility == 0 });
 						else
-							context.Undo.Execute<Commands::UpdateBarLineChange>(&course.BarLineChanges, BarLineChange { cursorBeat, newVisibility == 0 });
+							context.Undo.Execute<Commands::UpdateBarLineChange>(&course, &course.BarLineChanges, BarLineChange { cursorBeat, newVisibility == 0 });
 					};
 
 					Gui::BeginDisabled(disableEditingAtPlayCursor);
@@ -2305,7 +2509,7 @@ namespace PeepoDrumKit
 					if (!disallowRemoveButton && barLineChangeAtCursor != nullptr && barLineChangeAtCursor->BeatTime == cursorBeat)
 					{
 						if (Gui::Button(UI_Str("ACT_EVENT_REMOVE"), { getInsertButtonWidth(), 0.0f }))
-							context.Undo.Execute<Commands::RemoveBarLineChange>(&course.BarLineChanges, cursorBeat);
+							context.Undo.Execute<Commands::RemoveBarLineChange>(&course, &course.BarLineChanges, cursorBeat);
 					}
 					else
 					{
@@ -2329,9 +2533,9 @@ namespace PeepoDrumKit
 						auto insertOrUpdateCursorScrollType = [&](ScrollMethod newMethod)
 						{
 							if (ScrollTypeAtCursor == nullptr || ScrollTypeAtCursor->BeatTime != cursorBeat)
-								context.Undo.Execute<Commands::AddScrollType>(&course.ScrollTypes, ScrollType{ cursorBeat, newMethod });
+								context.Undo.Execute<Commands::AddScrollType>(&course, &course.ScrollTypes, ScrollType{ cursorBeat, newMethod });
 							else
-								context.Undo.Execute<Commands::UpdateScrollType>(&course.ScrollTypes, ScrollType{ cursorBeat, newMethod });
+								context.Undo.Execute<Commands::UpdateScrollType>(&course, &course.ScrollTypes, ScrollType{ cursorBeat, newMethod });
 						};
 
 						Gui::BeginDisabled(disableEditingAtPlayCursor);
@@ -2343,7 +2547,7 @@ namespace PeepoDrumKit
 						if (!disallowRemoveButton && ScrollTypeAtCursor != nullptr && ScrollTypeAtCursor->BeatTime == cursorBeat)
 						{
 							if (Gui::Button(UI_Str("ACT_EVENT_REMOVE"), { getInsertButtonWidth(), 0.0f }))
-								context.Undo.Execute<Commands::RemoveScrollType>(&course.ScrollTypes, cursorBeat);
+								context.Undo.Execute<Commands::RemoveScrollType>(&course, &course.ScrollTypes, cursorBeat);
 						}
 						else
 						{
@@ -2367,9 +2571,9 @@ namespace PeepoDrumKit
 				auto insertOrUpdateCursorJPOSScrollChange = [&](Complex newMove, f32 newDuration)
 				{
 					if (JPOSScrollChangeAtCursor == nullptr || JPOSScrollChangeAtCursor->BeatTime != cursorBeat)
-						context.Undo.Execute<Commands::AddJPOSScroll>(&course.JPOSScrollChanges, JPOSScrollChange{ cursorBeat, newMove, newDuration });
+						context.Undo.Execute<Commands::AddJPOSScroll>(&course, &course.JPOSScrollChanges, JPOSScrollChange{ cursorBeat, newMove, newDuration });
 					else
-						context.Undo.Execute<Commands::UpdateJPOSScroll>(&course.JPOSScrollChanges, JPOSScrollChange{ cursorBeat, newMove, newDuration });
+						context.Undo.Execute<Commands::UpdateJPOSScroll>(&course, &course.JPOSScrollChanges, JPOSScrollChange{ cursorBeat, newMove, newDuration });
 				};
 
 				Gui::Property::Property([&]
@@ -2416,7 +2620,7 @@ namespace PeepoDrumKit
 						if (!disallowRemoveButton && JPOSScrollChangeAtCursor != nullptr && JPOSScrollChangeAtCursor->BeatTime == cursorBeat)
 						{
 							if (Gui::Button(UI_Str("ACT_EVENT_REMOVE"), { getInsertButtonWidth(), 0.0f }))
-								context.Undo.Execute<Commands::RemoveJPOSScroll>(&course.JPOSScrollChanges, cursorBeat);
+								context.Undo.Execute<Commands::RemoveJPOSScroll>(&course, &course.JPOSScrollChanges, cursorBeat);
 						}
 						else
 						{
@@ -2455,7 +2659,7 @@ namespace PeepoDrumKit
 						erase_remove_if(newGoGoRanges.Sorted, gogoIntersectsSelection);
 						newGoGoRanges.InsertOrUpdate(GoGoRange { rangeSelectionMin, (rangeSelectionMax - rangeSelectionMin) });
 
-						context.Undo.Execute<Commands::AddGoGoRange>(&course.GoGoRanges, std::move(newGoGoRanges));
+						context.Undo.Execute<Commands::AddGoGoRange>(&course, &course.GoGoRanges, std::move(newGoGoRanges));
 					}
 					Gui::EndDisabled();
 
@@ -2469,7 +2673,7 @@ namespace PeepoDrumKit
 					if (Gui::Button(UI_Str("ACT_EVENT_REMOVE"), vec2(-1.0f, 0.0f)))
 					{
 						if (gogoRangeAtCursor != nullptr)
-							context.Undo.Execute<Commands::RemoveGoGoRange>(&course.GoGoRanges, gogoRangeAtCursor->BeatTime);
+							context.Undo.Execute<Commands::RemoveGoGoRange>(&course, &course.GoGoRanges, gogoRangeAtCursor->BeatTime);
 					}
 					Gui::EndDisabled();
 
@@ -2549,7 +2753,7 @@ namespace PeepoDrumKit
 				SortedLyricsList newLyrics;
 				ConvertAllLyricsFromString(timeSpace, chart.SongOffset, context.ChartSelectedCourse->TempoMap, AllLyricsBuffer, newLyrics);
 				// HACK: Full conversion every time a letter is typed, not great but seeing as lyrics is relatively rare and typically small in size this might be fine
-				context.Undo.Execute<Commands::ReplaceAllLyricChanges>(&context.ChartSelectedCourse->Lyrics, std::move(newLyrics));
+				context.Undo.Execute<Commands::ReplaceAllLyricChanges>(&course, &context.ChartSelectedCourse->Lyrics, std::move(newLyrics));
 			}
 
 			IsAllLyricsInputActiveLastFrame = IsAllLyricsInputActiveThisFrame;
@@ -2593,9 +2797,9 @@ namespace PeepoDrumKit
 				ConvertToEscapeSequences(LyricInputBuffer, newLyricLine, EscapeSequenceFlags::NewLines);
 
 				if (lyricChangeAtCursor == nullptr || lyricChangeAtCursor->BeatTime != cursorBeat)
-					context.Undo.Execute<Commands::AddLyricChange>(&course.Lyrics, LyricChange { cursorBeat, std::move(newLyricLine) });
+					context.Undo.Execute<Commands::AddLyricChange>(&course, &course.Lyrics, LyricChange { cursorBeat, std::move(newLyricLine) });
 				else
-					context.Undo.Execute<Commands::UpdateLyricChange>(&course.Lyrics, LyricChange { cursorBeat, std::move(newLyricLine) });
+					context.Undo.Execute<Commands::UpdateLyricChange>(&course, &course.Lyrics, LyricChange { cursorBeat, std::move(newLyricLine) });
 			}
 
 			// HACK: Workaround for ImGuiInputTextFlags_AutoSelectAll being ignored for multiline text inputs
@@ -2615,14 +2819,14 @@ namespace PeepoDrumKit
 				if (clicked == 0)
 				{
 					if (lyricChangeAtCursor == nullptr || lyricChangeAtCursor->BeatTime != cursorBeat)
-						context.Undo.Execute<Commands::AddLyricChange>(&course.Lyrics, LyricChange { cursorBeat, "" });
+						context.Undo.Execute<Commands::AddLyricChange>(&course, &course.Lyrics, LyricChange { cursorBeat, "" });
 					else
-						context.Undo.Execute<Commands::UpdateLyricChange>(&course.Lyrics, LyricChange { cursorBeat, "" });
+						context.Undo.Execute<Commands::UpdateLyricChange>(&course, &course.Lyrics, LyricChange { cursorBeat, "" });
 				}
 				else if (clicked == 1)
 				{
 					if (lyricChangeAtCursor != nullptr && lyricChangeAtCursor->BeatTime == cursorBeat)
-						context.Undo.Execute<Commands::RemoveLyricChange>(&course.Lyrics, cursorBeat);
+						context.Undo.Execute<Commands::RemoveLyricChange>(&course, &course.Lyrics, cursorBeat);
 				}
 			}
 			Gui::EndDisabled();

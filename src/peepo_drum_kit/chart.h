@@ -4,6 +4,7 @@
 #include "core_beat.h"
 #include "file_format_tja.h"
 #include <unordered_map>
+#include "chart_editor_i18n.h"
 
 namespace PeepoDrumKit
 {
@@ -19,10 +20,13 @@ namespace PeepoDrumKit
 		DrumrollBig,
 		Balloon,
 		BalloonSpecial,
+		// NOTE: TJAP2fPC
+		DonBigHand,
+		KaBigHand,
 		// NOTE: OpenTaiko notes
 		KaDon,
 		Bomb,
-		Adlib,
+		Adlib, // from TJAP2fPC
 		Fuse,
 		// ...
 		Count
@@ -30,21 +34,21 @@ namespace PeepoDrumKit
 
 	enum class NoteSEType : u8
 	{
-		Do, Don, DonBig,
-		// TODO: Ko,
-		Ka, Katsu, KatsuBig,
+		Do, Ko, Don, DonBig, DonHand,
+		Ka, Katsu, KatsuBig, KatsuHand,
 		Drumroll, DrumrollBig,
 		Balloon, BalloonSpecial,
 		Count
 	};
 
-	constexpr b8 IsDonNote(NoteType v) { return (v == NoteType::Don) || (v == NoteType::DonBig); }
-	constexpr b8 IsKaNote(NoteType v) { return (v == NoteType::Ka) || (v == NoteType::KaBig); }
+	constexpr b8 IsDonNote(NoteType v) { return (v == NoteType::Don) || (v == NoteType::DonBig) || (v == NoteType::DonBigHand); }
+	constexpr b8 IsKaNote(NoteType v) { return (v == NoteType::Ka) || (v == NoteType::KaBig) || (v == NoteType::KaBigHand); }
 	constexpr b8 IsKaDonNote(NoteType v) { return (v == NoteType::KaDon); }
 	constexpr b8 IsAdlibNote(NoteType v) { return (v == NoteType::Adlib); }
 	constexpr b8 IsBombNote(NoteType v) { return (v == NoteType::Bomb); }
 	constexpr b8 IsSmallNote(NoteType v) { return (v == NoteType::Don) || (v == NoteType::Ka) || (v == NoteType::Drumroll) || (v == NoteType::Balloon) || (v == NoteType::Fuse); }
 	constexpr b8 IsBigNote(NoteType v) { return !IsSmallNote(v); }
+	constexpr b8 IsHandNote(NoteType v) { return (v == NoteType::DonBigHand) || (v == NoteType::KaBigHand); }
 	constexpr b8 IsDrumrollNote(NoteType v) { return (v == NoteType::Drumroll) || (v == NoteType::DrumrollBig); }
 	constexpr b8 IsBalloonNote(NoteType v) { return (v == NoteType::Balloon) || (v == NoteType::BalloonSpecial) || (v == NoteType::Fuse); }
 	constexpr b8 IsLongNote(NoteType v) { return IsDrumrollNote(v) || IsBalloonNote(v); }
@@ -62,6 +66,8 @@ namespace PeepoDrumKit
 		case NoteType::DrumrollBig: return NoteType::Drumroll;
 		case NoteType::Balloon: return NoteType::Balloon;
 		case NoteType::BalloonSpecial: return NoteType::Balloon;
+		case NoteType::DonBigHand: return NoteType::Don;
+		case NoteType::KaBigHand: return NoteType::Ka;
 		case NoteType::KaDon: return NoteType::KaDon;
 		case NoteType::Bomb: return NoteType::Bomb;
 		case NoteType::Adlib: return NoteType::Adlib;
@@ -81,6 +87,8 @@ namespace PeepoDrumKit
 		case NoteType::DrumrollBig: return NoteType::DrumrollBig;
 		case NoteType::Balloon: return NoteType::BalloonSpecial;
 		case NoteType::BalloonSpecial: return NoteType::BalloonSpecial;
+		case NoteType::DonBigHand: return NoteType::DonBigHand;
+		case NoteType::KaBigHand: return NoteType::KaBigHand;
 		case NoteType::KaDon: return NoteType::KaDon;
 		case NoteType::Bomb: return NoteType::Bomb;
 		case NoteType::Adlib: return NoteType::Adlib;
@@ -88,17 +96,33 @@ namespace PeepoDrumKit
 		default: return v;
 		}
 	}
+	constexpr NoteType ToHandNote(NoteType v)
+	{
+		switch (v)
+		{
+		case NoteType::Don: return NoteType::DonBigHand;
+		case NoteType::DonBig: return NoteType::DonBigHand;
+		case NoteType::Ka: return NoteType::KaBigHand;
+		case NoteType::KaBig: return NoteType::KaBigHand;
+		case NoteType::DonBigHand: return NoteType::DonBigHand;
+		case NoteType::KaBigHand: return NoteType::KaBigHand;
+		default: return v;
+		}
+	}
 	constexpr NoteType ToggleNoteSize(NoteType v) { return IsSmallNote(v) ? ToBigNote(v) : ToSmallNote(v); }
 	constexpr NoteType ToSmallNoteIf(NoteType v, b8 condition) { return condition ? ToSmallNote(v) : v; }
 	constexpr NoteType ToBigNoteIf(NoteType v, b8 condition) { return condition ? ToBigNote(v) : v; }
+	constexpr NoteType ToHandNoteIf(NoteType v, b8 condition) { return condition ? ToHandNote(v) : v; }
 	constexpr NoteType FlipNote(NoteType v)
 	{
 		switch (v)
 		{
 		case NoteType::Don: return NoteType::Ka;
 		case NoteType::DonBig: return NoteType::KaBig;
+		case NoteType::DonBigHand: return NoteType::KaBigHand;
 		case NoteType::Ka: return NoteType::Don;
 		case NoteType::KaBig: return NoteType::DonBig;
+		case NoteType::KaBigHand: return NoteType::DonBigHand;
 		default: return v;
 		}
 	}
@@ -122,6 +146,7 @@ namespace PeepoDrumKit
 	{
 		Normal,
 		Ex,
+		Both,
 		Count
 	};
 
@@ -136,10 +161,23 @@ namespace PeepoDrumKit
 		"DIFFICULTY_TYPE_DAN",
 	};
 
-	constexpr cstr SideNames[EnumCount<Side>] =
+	static inline std::string GetStyleName(i32 style, i32 playerSide)
 	{
-		"SIDE_NORMAL",
-		"SIDE_EX"
+		if (style == 1)
+			return UI_Str("PLAYER_SIDE_STYLE_SINGLE");
+		char buf[32];
+		std::string res = (style == 2) ? UI_Str("PLAYER_SIDE_STYLE_DOUBLE")
+			: std::string(buf, sprintf_s(buf, UI_Str("PLAYER_SIDE_STYLE_FMT_%d_STYLE"), style));
+		std::string_view strPlaySide (buf, sprintf_s(buf, UI_Str("PLAYER_SIDE_PLAYER_FMT_%d_PLAYER"), playerSide));
+		res += " ("; res += strPlaySide; res += ")";
+		return res;
+	}
+
+	constexpr cstr TowerSideNames[EnumCount<Side>] =
+	{
+		"TOWER_SIDE_NORMAL",
+		"TOWER_SIDE_EX",
+		"TOWER_SIDE_BOTH",
 	};
 
 	enum class DifficultyLevel : u8
@@ -323,26 +361,13 @@ namespace PeepoDrumKit
 	constexpr Complex ScrollOrDefault(const ScrollChange* v) { return (v == nullptr) ? Complex(1.0f, 0.0f) : v->ScrollSpeed; }
 	constexpr Tempo TempoOrDefault(const TempoChange* v) { return (v == nullptr) ? FallbackTempo : v->Tempo; }
 
-	enum class Language : u8 { Base, JA, EN, CN, TW, KO, Count };
-	struct PerLanguageString
-	{
-		std::string Slots[EnumCount<Language>];
-
-		inline auto& Base() { return Slots[EnumToIndex(Language::Base)]; }
-		inline auto& Base() const { return Slots[EnumToIndex(Language::Base)]; }
-		inline auto* begin() { return &Slots[0]; }
-		inline auto* end() { return &Slots[0] + ArrayCount(Slots); }
-		inline auto* begin() const { return &Slots[0]; }
-		inline auto* end() const { return &Slots[0] + ArrayCount(Slots); }
-		inline auto& operator[](Language v) { return Slots[EnumToIndex(v)]; }
-		inline auto& operator[](Language v) const { return Slots[EnumToIndex(v)]; }
-	};
-
 	struct ChartCourse
 	{
 		DifficultyType Type = DifficultyType::Oni;
 		DifficultyLevel Level = DifficultyLevel { 1 };
 		DifficultyLevelDecimal Decimal = DifficultyLevelDecimal::None;
+		i32 Style = 1;
+		i32 PlayerSide = 1;
 
 		std::string CourseCreator;
 
@@ -368,9 +393,18 @@ namespace PeepoDrumKit
 		TowerLives Life = TowerLives{ 5 };
 		Side Side = Side::Normal;
 
+		std::map<std::string, std::string> OtherMetadata;
 
 		inline auto& GetNotes(BranchType branch) { assert(branch < BranchType::Count); return (&Notes_Normal)[EnumToIndex(branch)]; }
 		inline auto& GetNotes(BranchType branch) const { assert(branch < BranchType::Count); return (&Notes_Normal)[EnumToIndex(branch)]; }
+
+		void RecalculateSENotes() const
+		{
+			for (BranchType branch = BranchType::Normal; branch < BranchType::Count; IncrementEnum(branch))
+				RecalculateSENotes(branch);
+		}
+
+		void RecalculateSENotes(BranchType branch) const; // implemented in chart_editor_widgets_game.cpp
 	};
 
 	// NOTE: Internal representation of a chart. Can then be imported / exported as .tja (and maybe as the native fumen binary format too eventually?)
@@ -379,8 +413,10 @@ namespace PeepoDrumKit
 		std::vector<std::unique_ptr<ChartCourse>> Courses;
 
 		Time ChartDuration = {};
-		PerLanguageString ChartTitle;
-		PerLanguageString ChartSubtitle;
+		std::string ChartTitle;
+		std::map<std::string, std::string> ChartTitleLocalized; // (alphabetically) ordered
+		std::string ChartSubtitle;
+		std::map<std::string, std::string> ChartSubtitleLocalized;
 		std::string ChartCreator;
 		std::string ChartGenre;
 		std::string ChartLyricsFileName;
@@ -397,6 +433,8 @@ namespace PeepoDrumKit
 		std::string BackgroundMovieFileName;
 		Time MovieOffset = {};
 
+		std::map<std::string, std::string> OtherMetadata;
+
 		// TODO: Maybe change to GetDurationOr(Time defaultDuration) and always pass in context.SongDuration (?)
 		inline Time GetDurationOrDefault() const { return (ChartDuration.Seconds <= 0.0) ? Time::FromMin(1.0) : ChartDuration; }
 	};
@@ -406,7 +444,9 @@ namespace PeepoDrumKit
 
 	template <> constexpr std::string_view DisplayNameOfChartProjectAttr<&ChartProject::ChartDuration> = "Chart Duration";
 	template <> constexpr std::string_view DisplayNameOfChartProjectAttr<&ChartProject::ChartTitle> = "Chart Title";
+	template <> constexpr std::string_view DisplayNameOfChartProjectAttr<&ChartProject::ChartTitleLocalized> = "Chart Title Localized";
 	template <> constexpr std::string_view DisplayNameOfChartProjectAttr<&ChartProject::ChartSubtitle> = "Chart Subtitle";
+	template <> constexpr std::string_view DisplayNameOfChartProjectAttr<&ChartProject::ChartSubtitleLocalized> = "Chart Subtitle Localized";
 	template <> constexpr std::string_view DisplayNameOfChartProjectAttr<&ChartProject::ChartCreator> = "Chart Creator";
 	template <> constexpr std::string_view DisplayNameOfChartProjectAttr<&ChartProject::ChartGenre> = "Chart Genre";
 	template <> constexpr std::string_view DisplayNameOfChartProjectAttr<&ChartProject::ChartLyricsFileName> = "Chart Lyrics File";
@@ -870,6 +910,9 @@ namespace PeepoDrumKit
 		}
 
 		GenericListStruct() {};
+
+		template <typename TEvent, std::enable_if_t<!expect_type_v<TEvent, GenericListStruct>, bool> = true>
+		constexpr GenericListStruct(TEvent&& event);
 	};
 
 	template <auto... Tags, typename FAction, typename GenericListStructWithTypeT, typename... Args,
@@ -884,12 +927,15 @@ namespace PeepoDrumKit
 		GenericList List;
 		GenericListStruct Value;
 
-		// Default constructor
-		GenericListStructWithType() : List(GenericList::TempoChanges), Value() {}
+		// Default constructor: empty value
+		GenericListStructWithType() : List(GenericList::Count), Value() {}
 
 		// Constructor with parameters
 		GenericListStructWithType(GenericList list, const GenericListStruct& value)
 			: List(list), Value(value) {}
+
+		template <typename TEvent, std::enable_if_t<!expect_type_v<TEvent, GenericListStruct>, bool> = true>
+		constexpr GenericListStructWithType(GenericList list, TEvent&& event);
 	};
 
 	/// tuple-like GenericList access definition
@@ -947,6 +993,31 @@ namespace PeepoDrumKit
 
 	template <typename T>
 	constexpr b8 IsChartEventType = IsNonListChartEventTrait<std::remove_cv_t<std::remove_reference_t<T>>>::value || IsChartEventTypeHelper<T, make_enum_sequence<GenericList>>::value;
+
+	template <typename T, typename = void>
+	struct ChartEventTypeToGenericListHelper : std::false_type {};
+
+	template <typename T, GenericList... Lists>
+	struct ChartEventTypeToGenericListHelper<T, enum_sequence<GenericList, Lists...>>
+		: std::conditional_t<IsChartEventType<T>,
+			std::integral_constant<GenericList, std::min({ (expect_type_v<T, GenericListStructType<Lists>> ? Lists : GenericList::Count)... })>,
+			std::false_type>
+		{};
+
+	template <typename T>
+	constexpr GenericList ChartEventTypeToGenericList = ChartEventTypeToGenericListHelper<T, make_enum_sequence<GenericList>>::value;
+
+	template <typename TEvent, typename GenericListStructT, expect_type_t<GenericListStructT, GenericListStruct> = true>
+	constexpr decltype(auto) get(GenericListStructT&& inValue)
+	{
+		return get<ChartEventTypeToGenericList<TEvent>>(std::forward<GenericListStructT>(inValue));
+	}
+
+	template <typename TEvent, std::enable_if_t<!expect_type_v<TEvent, GenericListStruct>, bool>>
+	constexpr GenericListStruct::GenericListStruct(TEvent&& event) { get<TEvent>(*this) = event; };
+
+	template <typename TEvent, std::enable_if_t<!expect_type_v<TEvent, GenericListStruct>, bool>>
+	constexpr GenericListStructWithType::GenericListStructWithType(GenericList list, TEvent&& event) : List(list) { get<TEvent>(Value) = event; };
 
 	template <GenericMember Member, typename FAction, typename T, std::enable_if_t<IsChartEventType<T>, bool> = true, typename... Args>
 	constexpr __forceinline b8 TryDo(FAction&& action, T&& event, Args&&... args)
@@ -1019,6 +1090,9 @@ namespace PeepoDrumKit
 	constexpr b8 IsNotesList(GenericList list) { return (list == GenericList::Notes_Normal) || (list == GenericList::Notes_Expert) || (list == GenericList::Notes_Master); }
 	constexpr b8 ListHasDurations(GenericList list) { return IsNotesList(list) || (list == GenericList::GoGoRanges); }
 	constexpr b8 ListUsesInclusiveBeatCheck(GenericList list) { return IsNotesList(list) || (list != GenericList::GoGoRanges && list != GenericList::Lyrics); }
+	constexpr b8 ListIsItemEndBounded(GenericList list) { return IsNotesList(list) || (list == GenericList::GoGoRanges) || (list == GenericList::JPOSScroll); }
+	constexpr b8 ListHasNoteStaticEffects(GenericList list) { return (list == GenericList::TempoChanges) || (list == GenericList::ScrollChanges) || (list == GenericList::ScrollType); }
+	constexpr b8 ListHasBarlineStaticEffects(GenericList list) { return ListHasNoteStaticEffects(list) || (list == GenericList::BarLineChanges); }
 
 	constexpr size_t GetGenericMember_RawByteSize(GenericMember member)
 	{
@@ -1093,7 +1167,15 @@ namespace PeepoDrumKit
 			course, inValue);
 	}
 
-	inline b8 TryAddGenericStruct(ChartCourse& course, GenericList list, GenericListStruct inValue)
+	template <typename Func>
+	b8 TryAddOrFuncGenericStruct(ChartCourse& course, GenericList list, GenericListStruct inValue, Func funcExist)
+	{
+		return ApplySingleGenericList(list,
+			[&](auto&& typedList, auto&& typedInValue) { typedList.InsertOrFunc(typedInValue, funcExist); return true; }, false,
+			course, std::move(inValue)); // `std::move` makes no differences on POD
+	}
+
+	inline b8 TryAddOrReplaceGenericStruct(ChartCourse& course, GenericList list, GenericListStruct inValue)
 	{
 		return ApplySingleGenericList(list,
 			[&](auto&& typedList, auto&& typedInValue) { typedList.InsertOrUpdate(typedInValue); return true; }, false,
@@ -1143,5 +1225,98 @@ namespace PeepoDrumKit
 				if (typedList[i].IsSelected)
 					perSelectedItemFunc(ForEachChartItemData{ list, i });
 		}, course);
+	}
+
+	// helpers for end-unbounded events
+	template <b8 Inclusive>
+	constexpr Beat GetLastEffectBeatBefore(const ChartCourse& course, GenericList list, Beat beat)
+	{
+		constexpr auto compare = [](auto&& a, auto&& b) constexpr { if constexpr (Inclusive) { return a <= b; } else { return a < b; } };
+		assert(!ListIsItemEndBounded(list) && "Not for end-bounded events"); // not handled here
+		if (!(ListHasNoteStaticEffects(list) || ListHasBarlineStaticEffects(list)) // can just end at note or barline
+			|| list == GenericList::TempoChanges // need to be handled with scroll changes instead (TODO)
+			) {
+			return beat;
+		}
+		// do not end at note or barline if they are effect targets of the next event
+		Beat lastEffectBeat = Beat::FromTicks(-1);
+		if (ListHasNoteStaticEffects(list)) {
+			for (const auto& note : course.Notes_Normal) { // no sorted-by-end lists => need linear search for handling overlapping notes
+				if (!compare(note.BeatTime, beat))
+					break;
+				if (auto beatEnd = note.BeatTime + note.BeatDuration; compare(beatEnd, beat))
+					lastEffectBeat = std::max(lastEffectBeat, beatEnd);
+			}
+		}
+		if (ListHasBarlineStaticEffects(list)) {
+			Beat beatLastBarline = Beat::Zero();
+			course.TempoMap.ForEachBeatBar([&](const SortedTempoMap::ForEachBeatBarData& it)
+				{
+					if (!it.IsBar)
+						return ControlFlow::Continue;
+					if (!compare(it.Beat, beat))
+						return ControlFlow::Break;
+					beatLastBarline = it.Beat;
+					return ControlFlow::Continue;
+				});
+			lastEffectBeat = std::max(lastEffectBeat, beatLastBarline);
+		}
+		return lastEffectBeat;
+	}
+
+	constexpr Beat GetLastEffectBeatBefore(const ChartCourse& course, GenericList list, Beat beat, b8 inclusive)
+	{
+		return (inclusive) ? GetLastEffectBeatBefore<true>(course, list, beat) : GetLastEffectBeatBefore<false>(course, list, beat);
+	}
+
+	template <b8 Inclusive>
+	constexpr Beat GetFirstEffectBeatAfter(const ChartCourse& course, GenericList list, Beat beat)
+	{
+		constexpr auto compare = [](auto&& a, auto&& b) constexpr { if constexpr (Inclusive) { return a >= b; } else { return a > b; } };
+		assert(!ListIsItemEndBounded(list) && "Not for end-bounded events");
+		if (!(ListHasNoteStaticEffects(list) || ListHasBarlineStaticEffects(list)) // can just end at note or barline
+			|| list == GenericList::TempoChanges // need to be handled with scroll changes instead (TODO)
+			) {
+			return beat;
+		}
+		// end at note or barline if they are effect targets of the current event
+		Beat firstEffectBeat = Beat::FromTicks(I32Max);
+		if (ListHasNoteStaticEffects(list)) {
+			for (const auto& note : course.Notes_Normal) { // no sorted-by-end lists => need linear search for handling overlapping notes
+				if (auto beatEnd = note.BeatTime + note.BeatDuration; compare(beatEnd, beat))
+					firstEffectBeat = std::min(firstEffectBeat, beatEnd);
+				if (compare(note.BeatTime, beat))
+					break;
+			}
+		}
+		if (ListHasBarlineStaticEffects(list)) {
+			Beat beatFirstBarline = Beat::FromTicks(I32Max);
+			course.TempoMap.ForEachBeatBar([&](const SortedTempoMap::ForEachBeatBarData& it)
+				{
+					if (!it.IsBar)
+						return ControlFlow::Continue;
+					if (compare(it.Beat, beat)) {
+						beatFirstBarline = it.Beat;
+						return ControlFlow::Break;
+					}
+					return ControlFlow::Continue;
+				});
+			firstEffectBeat = std::min(firstEffectBeat, beatFirstBarline);
+		}
+		return firstEffectBeat;
+	}
+
+	constexpr Beat GetFirstEffectBeatAfter(const ChartCourse& course, GenericList list, Beat beat, b8 inclusive)
+	{
+		return (inclusive) ? GetFirstEffectBeatAfter<true>(course, list, beat) : GetFirstEffectBeatAfter<false>(course, list, beat);
+	}
+
+	constexpr Beat GetLastEffectBeat(const ChartCourse& course, GenericList list, size_t index)
+	{
+		assert(!ListIsItemEndBounded(list) && "Not for end-bounded events");
+		Beat beatStartNext = {};
+		if (!TryGet<GenericMember::Beat_Start>(course, list, index + 1, beatStartNext))
+			return Beat::FromTicks(I32Max);
+		return GetLastEffectBeatBefore<false>(course, list, beatStartNext);
 	}
 }

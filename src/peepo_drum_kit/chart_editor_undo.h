@@ -81,20 +81,40 @@ namespace PeepoDrumKit
 		constexpr std::string_view ActionPrefixUpdateAll = "Update All ";
 
 		template <typename TEvent>
+		static void RefreshChart(ChartCourse* Course, ChartCourseListType<TEvent>* Map)
+		{
+			if constexpr (TempoMapMemberPointer<TEvent> != nullptr) { Map->RebuildAccelerationStructure(); Course->RecalculateSENotes(); }
+			else if constexpr (expect_type_v<TEvent, Note>) { Course->RecalculateSENotes(); }
+		}
+
+		template <typename TEvent>
 		struct AddSingleChartEventBase : Undo::Command
 		{;
 			using ChartCourseListType = ChartCourseListType<TEvent>;
 			constexpr static auto EventList = TempoMapMemberPointer<TEvent>;
-			AddSingleChartEventBase(ChartCourseListType* map, TEvent newValue) : Map(map), NewValue(newValue) { }
+			AddSingleChartEventBase(ChartCourse* course, ChartCourseListType* map, TEvent newValue) : Course(course), Map(map), NewValue(newValue) {}
 
-			void Undo() override { GetEventList<EventList>(*Map).RemoveAtBeat(GetBeat(NewValue)); if constexpr (EventList != nullptr) { Map->RebuildAccelerationStructure(); } }
-			void Redo() override { GetEventList<EventList>(*Map).InsertOrUpdate(NewValue); if constexpr (EventList != nullptr) { Map->RebuildAccelerationStructure(); } }
+			void Undo() override
+			{
+				if (ReplacedValue.has_value())
+					GetEventList<EventList>(*Map).InsertOrUpdate(ReplacedValue.value());
+				else
+					GetEventList<EventList>(*Map).RemoveAtBeat(GetBeat(NewValue));
+				RefreshChart<TEvent>(Course, Map);
+			}
+			void Redo() override
+			{
+				GetEventList<EventList>(*Map).InsertOrFunc(NewValue, [&](TEvent& v, ...) { ReplacedValue = std::move(v); v = NewValue; }); // safe replace
+				RefreshChart<TEvent>(Course, Map);
+			}
 
 			Undo::MergeResult TryMerge(Command& commandToMerge) override { return Undo::MergeResult::Failed; }
 			Undo::CommandInfo GetInfo() const override { return { ConstevalStrJoined<ActionPrefixAdd, DisplayNameOfChartEvent<TEvent>> }; }
 
+			ChartCourse* Course;
 			ChartCourseListType* Map;
 			TEvent NewValue;
+			std::optional<TEvent> ReplacedValue;
 		};
 		template <typename TEvent>
 		struct AddSingleChartEvent : AddSingleChartEventBase<TEvent> { using AddSingleChartEventBase<TEvent>::AddSingleChartEventBase; };
@@ -104,16 +124,35 @@ namespace PeepoDrumKit
 		{
 			using ChartCourseListType = ChartCourseListType<TEvent>;
 			constexpr static auto EventList = TempoMapMemberPointer<TEvent>;
-			AddMultipleChartEventsBase(ChartCourseListType* map, std::vector<TEvent> newValues) : Map(map), NewEvents(std::move(newValues)) { }
+			AddMultipleChartEventsBase(ChartCourse* course, ChartCourseListType* map, std::vector<TEvent> newValues) : Course(course), Map(map)
+			{
+				for (const auto& event : newValues)
+					NewEvents.InsertOrUpdate(event); // merge new events
+			}
 
-			void Undo() override { for (const auto& event : NewEvents) GetEventList<EventList>(*Map).RemoveAtBeat(GetBeat(event)); if constexpr (EventList != nullptr) { Map->RebuildAccelerationStructure(); } }
-			void Redo() override { for (const auto& event : NewEvents) GetEventList<EventList>(*Map).InsertOrUpdate(event); if constexpr (EventList != nullptr) { Map->RebuildAccelerationStructure(); } }
+			void Undo() override
+			{
+				for (const auto& event : NewEvents)
+					GetEventList<EventList>(*Map).RemoveAtBeat(GetBeat(event));
+				for (const auto& event : ReplacedEvents)
+					GetEventList<EventList>(*Map).InsertOrUpdate(event);
+				RefreshChart<TEvent>(Course, Map);
+			}
+			void Redo() override
+			{
+				ReplacedEvents.clear();
+				for (const auto& event : NewEvents)
+					GetEventList<EventList>(*Map).InsertOrFunc(event, [&](TEvent& v, ...) { ReplacedEvents.push_back(std::move(v)); v = event; }); // safe replace
+				RefreshChart<TEvent>(Course, Map);
+			}
 
 			Undo::MergeResult TryMerge(Undo::Command& commandToMerge) override { return Undo::MergeResult::Failed; }
 			Undo::CommandInfo GetInfo() const override { return { ConstevalStrJoined<ActionPrefixAdd, DisplayNameOfChartEvents<TEvent>> }; }
 
+			ChartCourse* Course;
 			ChartCourseListType* Map;
-			std::vector<TEvent> NewEvents;
+			BeatSortedList<TEvent> NewEvents;
+			std::vector<TEvent> ReplacedEvents;
 		};
 		template <typename TEvent>
 		struct AddMultipleChartEvents : AddMultipleChartEventsBase<TEvent> { using AddMultipleChartEventsBase<TEvent>::AddMultipleChartEventsBase; };
@@ -123,15 +162,16 @@ namespace PeepoDrumKit
 		{
 			using ChartCourseListType = ChartCourseListType<TEvent>;
 			constexpr static auto EventList = TempoMapMemberPointer<TEvent>;
-			RemoveSingleChartEventBase(ChartCourseListType* map, TEvent oldValue) : Map(map), OldValue(oldValue) { }
-			RemoveSingleChartEventBase(ChartCourseListType* map, Beat beat) : Map(map), OldValue(*GetEventList<EventList>(*Map).TryFindExactAtBeat(beat)) { assert(GetBeat(OldValue) == beat); }
+			RemoveSingleChartEventBase(ChartCourse* course, ChartCourseListType* map, TEvent oldValue) : Course(course), Map(map), OldValue(oldValue) { }
+			RemoveSingleChartEventBase(ChartCourse* course, ChartCourseListType* map, Beat beat) : Course(course), Map(map), OldValue(*GetEventList<EventList>(*Map).TryFindExactAtBeat(beat)) { assert(GetBeat(OldValue) == beat); }
 
-			void Undo() override { GetEventList<EventList>(*Map).InsertOrUpdate(OldValue); if constexpr (EventList != nullptr) { Map->RebuildAccelerationStructure(); } }
-			void Redo() override { GetEventList<EventList>(*Map).RemoveAtBeat(GetBeat(OldValue)); if constexpr (EventList != nullptr) { Map->RebuildAccelerationStructure(); } }
+			void Undo() override { GetEventList<EventList>(*Map).InsertOrUpdate(OldValue); RefreshChart<TEvent>(Course, Map); }
+			void Redo() override { GetEventList<EventList>(*Map).RemoveAtBeat(GetBeat(OldValue)); RefreshChart<TEvent>(Course, Map); }
 
 			Undo::MergeResult TryMerge(Command& commandToMerge) override { return Undo::MergeResult::Failed; }
 			Undo::CommandInfo GetInfo() const override { return { ConstevalStrJoined<ActionPrefixRemove, DisplayNameOfChartEvent<TEvent>> }; }
 
+			ChartCourse* Course;
 			ChartCourseListType* Map;
 			TEvent OldValue;
 		};
@@ -143,14 +183,24 @@ namespace PeepoDrumKit
 		{
 			using ChartCourseListType = ChartCourseListType<TEvent>;
 			constexpr static auto EventList = TempoMapMemberPointer<TEvent>;
-			RemoveMultipleChartEventsBase(ChartCourseListType* map, std::vector<TEvent> oldValues) : Map(map), OldValues(std::move(oldValues)) { }
+			RemoveMultipleChartEventsBase(ChartCourse* course, ChartCourseListType* map, std::vector<TEvent> oldValues) : Course(course), Map(map), OldValues(std::move(oldValues)) { }
 
-			void Undo() override { for (TEvent& event : OldValues) GetEventList<EventList>(*Map).InsertOrUpdate(event); if constexpr (EventList != nullptr) { Map->RebuildAccelerationStructure(); } }
-			void Redo() override { for (const TEvent& event : OldValues) GetEventList<EventList>(*Map).RemoveAtBeat(GetBeat(event)); if constexpr (EventList != nullptr) { Map->RebuildAccelerationStructure(); } }
+			void Undo() override
+			{
+				for (const auto& event : OldValues)
+					GetEventList<EventList>(*Map).InsertOrUpdate(event);
+				RefreshChart<TEvent>(Course, Map);
+			}
+			void Redo() override
+			{
+				for (const TEvent& event : OldValues) GetEventList<EventList>(*Map).RemoveAtBeat(GetBeat(event));
+				RefreshChart<TEvent>(Course, Map);
+			}
 
 			Undo::MergeResult TryMerge(Undo::Command& commandToMerge) override { return Undo::MergeResult::Failed; }
 			Undo::CommandInfo GetInfo() const override { return { ConstevalStrJoined<ActionPrefixRemove, DisplayNameOfChartEvents<TEvent>> }; }
 
+			ChartCourse* Course;
 			ChartCourseListType* Map;
 			std::vector<TEvent> OldValues;
 		};
@@ -162,14 +212,25 @@ namespace PeepoDrumKit
 		{
 			using ChartCourseListType = ChartCourseListType<TEvent>;
 			constexpr static auto EventList = TempoMapMemberPointer<TEvent>;
-			AddSingleLongEventBase(ChartCourseListType* map, TEvent newValue, std::vector<TEvent> eventsToRemove) : Map(map), NewValue(newValue), EventsToRemove(map, std::move(eventsToRemove)) { }
+			AddSingleLongEventBase(ChartCourse* course, ChartCourseListType* map, TEvent newValue, std::vector<TEvent> eventsToRemove) : Course(course), Map(map), NewValue(newValue), EventsToRemove(course, map, std::move(eventsToRemove)) { }
 
-			void Undo() override { GetEventList<EventList>(*Map).RemoveAtBeat(GetBeat(NewValue)); EventsToRemove.Undo(); if constexpr (EventList != nullptr) { Map->RebuildAccelerationStructure(); } }
-			void Redo() override { EventsToRemove.Redo(); GetEventList<EventList>(*Map).InsertOrUpdate(NewValue); if constexpr (EventList != nullptr) { Map->RebuildAccelerationStructure(); } }
+			void Undo() override
+			{
+				GetEventList<EventList>(*Map).RemoveAtBeat(GetBeat(NewValue));
+				EventsToRemove.Undo();
+				RefreshChart<TEvent>(Course, Map);
+			}
+			void Redo() override
+			{
+				EventsToRemove.Redo();
+				GetEventList<EventList>(*Map).InsertOrFunc(NewValue, [&](TEvent& v, ...) { EventsToRemove.OldValues.push_back(std::move(v)); v = NewValue; }); // safe replace
+				RefreshChart<TEvent>(Course, Map);
+			}
 
 			Undo::MergeResult TryMerge(Undo::Command& commandToMerge) override { return Undo::MergeResult::Failed; }
 			Undo::CommandInfo GetInfo() const override { return { ConstevalStrJoined<ActionPrefixAdd, DisplayNameOfLongChartEvent<TEvent>> }; }
 
+			ChartCourse* Course;
 			ChartCourseListType* Map;
 			TEvent NewValue;
 			RemoveMultipleChartEvents<TEvent> EventsToRemove;
@@ -182,10 +243,10 @@ namespace PeepoDrumKit
 		{
 			using ChartCourseListType = ChartCourseListType<TEvent>;
 			constexpr static auto EventList = TempoMapMemberPointer<TEvent>;
-			UpdateSingleChartEventBase(ChartCourseListType* map, TEvent newValue) : Map(map), NewValue(newValue), OldValue(*GetEventList<EventList>(*Map).TryFindExactAtBeat(GetBeat(newValue))) { assert(GetBeat(newValue) == GetBeat(OldValue)); }
+			UpdateSingleChartEventBase(ChartCourse* course, ChartCourseListType* map, TEvent newValue) : Course(course), Map(map), NewValue(newValue), OldValue(*GetEventList<EventList>(*Map).TryFindExactAtBeat(GetBeat(newValue))) { assert(GetBeat(newValue) == GetBeat(OldValue)); }
 
-			void Undo() override { GetEventList<EventList>(*Map).InsertOrUpdate(OldValue); if constexpr (EventList != nullptr) { Map->RebuildAccelerationStructure(); } }
-			void Redo() override { GetEventList<EventList>(*Map).InsertOrUpdate(NewValue); if constexpr (EventList != nullptr) { Map->RebuildAccelerationStructure(); } }
+			void Undo() override { GetEventList<EventList>(*Map).InsertOrUpdate(OldValue); RefreshChart<TEvent>(Course, Map); }
+			void Redo() override { GetEventList<EventList>(*Map).InsertOrUpdate(NewValue); RefreshChart<TEvent>(Course, Map); }
 
 			Undo::MergeResult TryMerge(Command& commandToMerge) override
 			{
@@ -199,6 +260,7 @@ namespace PeepoDrumKit
 
 			Undo::CommandInfo GetInfo() const override { return { ConstevalStrJoined<ActionPrefixUpdate, DisplayNameOfChartEvent<TEvent>> }; }
 
+			ChartCourse* Course;
 			ChartCourseListType* Map;
 			TEvent NewValue, OldValue;
 		};
@@ -211,10 +273,10 @@ namespace PeepoDrumKit
 			using ChartCourseListType = ChartCourseListType<TEvent>;
 			using SortedEventsList = BeatSortedList<TEvent>;
 			constexpr static auto EventList = TempoMapMemberPointer<TEvent>;
-			ReplaceAllChartEventsBase(ChartCourseListType* map, SortedEventsList newValues) : Map(map), NewValues(std::move(newValues)), OldValues(GetEventList<EventList>(*map)) { }
+			ReplaceAllChartEventsBase(ChartCourse* course, ChartCourseListType* map, SortedEventsList newValues) : Course(course), Map(map), NewValues(std::move(newValues)), OldValues(GetEventList<EventList>(*map)) { }
 
-			void Undo() override { GetEventList<EventList>(*Map) = OldValues; if constexpr (EventList != nullptr) { Map->RebuildAccelerationStructure(); } }
-			void Redo() override { GetEventList<EventList>(*Map) = NewValues; if constexpr (EventList != nullptr) { Map->RebuildAccelerationStructure(); } }
+			void Undo() override { GetEventList<EventList>(*Map) = OldValues; RefreshChart<TEvent>(Course, Map); }
+			void Redo() override { GetEventList<EventList>(*Map) = NewValues; RefreshChart<TEvent>(Course, Map); }
 
 			Undo::MergeResult TryMerge(Command& commandToMerge) override
 			{
@@ -228,6 +290,7 @@ namespace PeepoDrumKit
 
 			Undo::CommandInfo GetInfo() const override { return { ConstevalStrJoined<ActionPrefixUpdateAll, DisplayNameOfChartEvents<TEvent>> }; }
 
+			ChartCourse* Course;
 			ChartCourseListType* Map;
 			SortedEventsList NewValues, OldValues;
 		};
@@ -341,10 +404,10 @@ namespace PeepoDrumKit
 			using TAttr = remove_member_pointer_t<decltype(Attr)>;
 			using Data = NoteAttributeData<TAttr>;
 
-			ChangeSingleNoteAttributeBase(SortedNotesList* notes, Data newData) : Notes(notes), NewData(std::move(newData)) { NewData.OldValue = (*Notes)[NewData.Index].*Attr; }
+			ChangeSingleNoteAttributeBase(ChartCourse* course, SortedNotesList* notes, Data newData) : Course(course), Notes(notes), NewData(std::move(newData)) { NewData.OldValue = (*Notes)[NewData.Index].*Attr; }
 
-			void Undo() override { (*Notes)[NewData.Index].*Attr = NewData.OldValue; }
-			void Redo() override { (*Notes)[NewData.Index].*Attr = NewData.NewValue; }
+			void Undo() override { (*Notes)[NewData.Index].*Attr = NewData.OldValue; RefreshChart<Note>(Course, nullptr); }
+			void Redo() override { (*Notes)[NewData.Index].*Attr = NewData.NewValue; RefreshChart<Note>(Course, nullptr); }
 
 			Undo::MergeResult TryMerge(Undo::Command& commandToMerge) override
 			{
@@ -362,6 +425,7 @@ namespace PeepoDrumKit
 
 			Undo::CommandInfo GetInfo() const override { return { "Change Note Attribute" }; }
 
+			ChartCourse* Course;
 			SortedNotesList* Notes;
 			Data NewData;
 		};
@@ -374,8 +438,8 @@ namespace PeepoDrumKit
 			using TAttr = remove_member_pointer_t<decltype(Attr)>;
 			using Data = NoteAttributeData<TAttr>;
 
-			ChangeMultipleNoteAttributesBase(SortedNotesList* notes, std::vector<Data> newData)
-				: Notes(notes), NewData(std::move(newData))
+			ChangeMultipleNoteAttributesBase(ChartCourse* course, SortedNotesList* notes, std::vector<Data> newData)
+				: Course(course), Notes(notes), NewData(std::move(newData))
 			{
 				for (auto& newData : NewData)
 					newData.OldValue = (*Notes)[newData.Index].*Attr;
@@ -385,12 +449,14 @@ namespace PeepoDrumKit
 			{
 				for (const auto& newData : NewData)
 					(*Notes)[newData.Index].*Attr = newData.OldValue;
+				RefreshChart<Note>(Course, nullptr);
 			}
 
 			void Redo() override
 			{
 				for (const auto& newData : NewData)
 					(*Notes)[newData.Index].*Attr = newData.NewValue;
+				RefreshChart<Note>(Course, nullptr);
 			}
 
 			Undo::MergeResult TryMerge(Undo::Command& commandToMerge) override
@@ -416,6 +482,7 @@ namespace PeepoDrumKit
 
 			Undo::CommandInfo GetInfo() const override { return { "Change Note Attributes" }; }
 
+			ChartCourse* Course;
 			SortedNotesList* Notes;
 			std::vector<Data> NewData;
 		};
@@ -486,37 +553,51 @@ namespace PeepoDrumKit
 	{
 		struct AddMultipleGenericItems : Undo::Command
 		{
-			AddMultipleGenericItems(ChartCourse* course, std::vector<GenericListStructWithType> newData) : Course(course), NewData(std::move(newData)), UpdateTempoMap(false)
+			AddMultipleGenericItems(ChartCourse* course, std::vector<GenericListStructWithType> newData) : Course(course), UpdateTempoMap(false)
 			{
-				for (const auto& data : NewData)
-				{
+				for (const auto& data : newData) {
+					NewData[static_cast<size_t>(data.List)].InsertOrUpdate(data); // merge new data
 					if (data.List == GenericList::TempoChanges)
 						UpdateTempoMap = true;
+					else if (IsNotesList(data.List))
+						UpdateNotes = true;
 				}
 			}
 
 			void Undo() override
 			{
-				for (const auto& data : NewData)
-					TryRemoveGenericStruct(*Course, data.List, data.Value);
+				for (const auto& list : NewData) {
+					for (const auto& data : list)
+						TryRemoveGenericStruct(*Course, data.List, data.Value);
+				}
+				for (const auto& data : ReplacedData)
+					TryAddOrReplaceGenericStruct(*Course, data.List, data.Value);
 				if (UpdateTempoMap)
 					Course->TempoMap.RebuildAccelerationStructure();
+				if (UpdateTempoMap || UpdateNotes)
+					Course->RecalculateSENotes();
 			}
 
 			void Redo() override
 			{
-				for (const auto& data : NewData)
-					TryAddGenericStruct(*Course, data.List, data.Value);
+				ReplacedData.clear();
+				for (const auto& list : NewData) {
+					for (const auto& data : list)
+						TryAddOrFuncGenericStruct(*Course, data.List, data.Value, [&](auto& v, auto&& vNew) { ReplacedData.emplace_back(data.List, std::move(v)); v = vNew; }); // safe replace
+				}
 				if (UpdateTempoMap)
 					Course->TempoMap.RebuildAccelerationStructure();
+				if (UpdateTempoMap || UpdateNotes)
+					Course->RecalculateSENotes();
 			}
 
 			Undo::MergeResult TryMerge(Undo::Command& commandToMerge) override { return Undo::MergeResult::Failed; }
 			Undo::CommandInfo GetInfo() const override { return { "Add Items" }; }
 
 			ChartCourse* Course;
-			std::vector<GenericListStructWithType> NewData;
-			b8 UpdateTempoMap;
+			BeatSortedList<GenericListStructWithType> NewData[EnumCount<GenericList>];
+			std::vector<GenericListStructWithType> ReplacedData;
+			b8 UpdateTempoMap, UpdateNotes;
 		};
 
 		struct RemoveMultipleGenericItems : Undo::Command
@@ -527,15 +608,19 @@ namespace PeepoDrumKit
 				{
 					if (data.List == GenericList::TempoChanges)
 						UpdateTempoMap = true;
+					else if (IsNotesList(data.List))
+						UpdateNotes = true;
 				}
 			}
 
 			void Undo() override
 			{
 				for (const auto& data : OldData)
-					TryAddGenericStruct(*Course, data.List, data.Value);
+					TryAddOrReplaceGenericStruct(*Course, data.List, data.Value);
 				if (UpdateTempoMap)
 					Course->TempoMap.RebuildAccelerationStructure();
+				if (UpdateTempoMap || UpdateNotes)
+					Course->RecalculateSENotes();
 			}
 
 			void Redo() override
@@ -544,6 +629,8 @@ namespace PeepoDrumKit
 					TryRemoveGenericStruct(*Course, data.List, data.Value);
 				if (UpdateTempoMap)
 					Course->TempoMap.RebuildAccelerationStructure();
+				if (UpdateTempoMap || UpdateNotes)
+					Course->RecalculateSENotes();
 			}
 
 			Undo::MergeResult TryMerge(Undo::Command& commandToMerge) override { return Undo::MergeResult::Failed; }
@@ -551,7 +638,7 @@ namespace PeepoDrumKit
 
 			ChartCourse* Course;
 			std::vector<GenericListStructWithType> OldData;
-			b8 UpdateTempoMap;
+			b8 UpdateTempoMap, UpdateNotes;
 		};
 
 		struct AddMultipleGenericItems_Paste : AddMultipleGenericItems
@@ -597,6 +684,8 @@ namespace PeepoDrumKit
 					assert(success);
 					if (data.List == GenericList::TempoChanges)
 						UpdateTempoMap = true;
+					else if (IsNotesList(data.List))
+						UpdateNotes = true;
 				}
 			}
 
@@ -606,6 +695,8 @@ namespace PeepoDrumKit
 					TrySet(*Course, newData.List, newData.Index, newData.Member, newData.OldValue);
 				if (UpdateTempoMap)
 					Course->TempoMap.RebuildAccelerationStructure();
+				if (UpdateTempoMap || UpdateNotes)
+					Course->RecalculateSENotes();
 			}
 
 			void Redo() override
@@ -614,6 +705,8 @@ namespace PeepoDrumKit
 					TrySet(*Course, newData.List, newData.Index, newData.Member, newData.NewValue);
 				if (UpdateTempoMap)
 					Course->TempoMap.RebuildAccelerationStructure();
+				if (UpdateTempoMap || UpdateNotes)
+					Course->RecalculateSENotes();
 			}
 
 			Undo::MergeResult TryMerge(Undo::Command& commandToMerge) override
@@ -643,7 +736,7 @@ namespace PeepoDrumKit
 
 			ChartCourse* Course;
 			std::vector<Data> NewData;
-			b8 UpdateTempoMap;
+			b8 UpdateTempoMap, UpdateNotes;
 		};
 
 		struct ChangeMultipleGenericProperties_MoveItems : ChangeMultipleGenericProperties
@@ -685,6 +778,46 @@ namespace PeepoDrumKit
 		{
 			using RemoveThenAddMultipleGenericItems::RemoveThenAddMultipleGenericItems;
 			Undo::CommandInfo GetInfo() const override { return { "Compress Items" }; }
+		};
+
+		struct RemoveThenAddMultipleGenericItems_ReverseItems : RemoveThenAddMultipleGenericItems
+		{
+			using RemoveThenAddMultipleGenericItems::RemoveThenAddMultipleGenericItems;
+			Undo::CommandInfo GetInfo() const override { return { "Reverse Items" }; }
+		};
+
+		template <typename TCommand>
+		struct ChangeRangeSelection : TCommand
+		{
+			template <typename... TArgs>
+			ChangeRangeSelection(std::pair<Beat*, Beat*> selectedRange, std::pair<Beat, Beat> rangeDataNew, TArgs&&... args)
+				: SelectedRange(selectedRange), RangeDataOld(*selectedRange.first, *selectedRange.second), RangeDataNew(rangeDataNew), TCommand(args...)
+			{
+			}
+
+			void Undo() override { TCommand::Undo(); *SelectedRange.first = RangeDataOld.first; *SelectedRange.second = RangeDataOld.second; }
+			void Redo() override { TCommand::Redo(); *SelectedRange.first = RangeDataNew.first; *SelectedRange.second = RangeDataNew.second; }
+
+			std::pair<Beat*, Beat*> SelectedRange;
+			std::pair<Beat, Beat> RangeDataOld, RangeDataNew;
+		};
+
+		struct RemoveThenAddMultipleGenericItems_ExpandRange : ChangeRangeSelection<RemoveThenAddMultipleGenericItems>
+		{
+			using ChangeRangeSelection::ChangeRangeSelection;
+			Undo::CommandInfo GetInfo() const override { return { "Expand Range" }; }
+		};
+
+		struct RemoveThenAddMultipleGenericItems_CompressRange : ChangeRangeSelection<RemoveThenAddMultipleGenericItems>
+		{
+			using ChangeRangeSelection::ChangeRangeSelection;
+			Undo::CommandInfo GetInfo() const override { return { "Compress Range" }; }
+		};
+
+		struct RemoveThenAddMultipleGenericItems_ReverseRange : ChangeRangeSelection<RemoveThenAddMultipleGenericItems>
+		{
+			using ChangeRangeSelection::ChangeRangeSelection;
+			Undo::CommandInfo GetInfo() const override { return { "Reverse Range" }; }
 		};
 	}
 }

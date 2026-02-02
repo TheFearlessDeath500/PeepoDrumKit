@@ -1,6 +1,7 @@
 ﻿#include "chart_editor.h"
 #include "core_build_info.h"
 #include "chart_editor_undo.h"
+#include "chart_editor_widgets.h"
 #include "audio/audio_file_formats.h"
 #include "chart_editor_i18n.h"
 
@@ -51,18 +52,21 @@ namespace PeepoDrumKit
 	}
 
 	static b8 GlobalLastSetRequestExclusiveDeviceAccessAudioSetting = {};
+	static i32 GlobalLastSetAudioBufferFrameSize = {};
 
 	ChartEditor::ChartEditor()
 	{
 		context.Gfx.StartAsyncLoading();
-		context.SongVoice = Audio::Engine.AddVoice(Audio::SourceHandle::Invalid, "ChartEditor SongVoice", false, 1.0f, true);
+		context.SongVoice = Audio::Engine.AddVoice(Audio::SourceHandle::Invalid, "ChartEditor SongVoice", false, 1.0f, 0, true);
 		context.SfxVoicePool.StartAsyncLoadingAndAddVoices();
 
-		context.ChartSelectedCourse = context.Chart.Courses.emplace_back(std::make_unique<ChartCourse>()).get();
+		context.ResetChartsCompared();
+		context.SetSelectedChart(context.Chart.Courses.emplace_back(std::make_unique<ChartCourse>()).get(), BranchType::Normal);
 		SetChartDefaultSettingsAndCourses(context.Chart);
 
 		GlobalLastSetRequestExclusiveDeviceAccessAudioSetting = *Settings.Audio.RequestExclusiveDeviceAccess;
 		Audio::Engine.SetBackend(*Settings.Audio.RequestExclusiveDeviceAccess ? Audio::Backend::WASAPI_Exclusive : Audio::Backend::WASAPI_Shared);
+		Audio::Engine.SetBufferFrameSize(*Settings.Audio.BufferFrameSize);
 		Audio::Engine.SetMasterVolume(0.75f);
 		if (*Settings.Audio.OpenDeviceOnStartup)
 			Audio::Engine.OpenStartStream();
@@ -94,6 +98,7 @@ namespace PeepoDrumKit
 				if (nextLanguageToSelect != SelectedGuiLanguage)
 				{
 					SelectedGuiLanguage = nextLanguageToSelect;
+					SelectedGuiLanguageTJA = ASCII::IETFLangTagToTJALangTag(SelectedGuiLanguage);
 					i18n::ReloadLocaleFile(SelectedGuiLanguage.c_str());
 				}
 			};
@@ -171,6 +176,8 @@ namespace PeepoDrumKit
 					timeline.ExecuteSelectionAction(context, SelectionAction::UnselectAll, param);
 				if (Gui::MenuItem(UI_Str("ACT_SELECTION_INVERT"), ToShortcutString(*Settings.Input.Timeline_InvertSelection).Data))
 					timeline.ExecuteSelectionAction(context, SelectionAction::InvertAll, param);
+				if (Gui::MenuItem(UI_Str("ACT_SELECTION_SELECT_TO_CHART_END"), ToShortcutString(*Settings.Input.Timeline_SelectToChartEnd).Data))
+					timeline.ExecuteSelectionAction(context, SelectionAction::SelectToEnd, param.SetBeatCursor(context.GetCursorBeat()));
 				if (Gui::MenuItem(UI_Str("ACT_SELECTION_FROM_RANGE"), ToShortcutString(*Settings.Input.Timeline_SelectAllWithinRangeSelection).Data, nullptr, timeline.RangeSelection.IsActiveAndHasEnd()))
 					timeline.ExecuteSelectionAction(context, SelectionAction::SelectAllWithinRangeSelection, param);
 				Gui::Separator();
@@ -265,25 +272,117 @@ namespace PeepoDrumKit
 				if (Gui::MenuItem(UI_Str("ACT_TRANSFORM_TOGGLE_NOTE_SIZES"), ToShortcutString(*Settings.Input.Timeline_ToggleNoteSize).Data, nullptr, isAnyNoteSelected))
 					timeline.ExecuteTransformAction(context, TransformAction::ToggleNoteSize, param);
 
-				if (Gui::BeginMenu(UI_Str("ACT_TRANSFORM_EXPAND_ITEMS")))
+				auto scaleMenu = [&](TransformAction scaleAction, b8 enabled)
 				{
-					if (Gui::MenuItem(UI_Str("ACT_TRANSFORM_RATIO_2_1"), ToShortcutString(*Settings.Input.Timeline_ExpandItemTime_2To1).Data, nullptr, isAnyItemSelected))
-						timeline.ExecuteTransformAction(context, TransformAction::ScaleItemTime, param.SetTimeRatio(2, 1));
-					if (Gui::MenuItem(UI_Str("ACT_TRANSFORM_RATIO_3_2"), ToShortcutString(*Settings.Input.Timeline_ExpandItemTime_3To2).Data, nullptr, isAnyItemSelected))
-						timeline.ExecuteTransformAction(context, TransformAction::ScaleItemTime, param.SetTimeRatio(3, 2));
-					if (Gui::MenuItem(UI_Str("ACT_TRANSFORM_RATIO_4_3"), ToShortcutString(*Settings.Input.Timeline_ExpandItemTime_4To3).Data, nullptr, isAnyItemSelected))
-						timeline.ExecuteTransformAction(context, TransformAction::ScaleItemTime, param.SetTimeRatio(4, 3));
+					if (Gui::MenuItem(UI_Str("ACT_TRANSFORM_RATIO_2_1"), ToShortcutString(*Settings.Input.Timeline_ExpandItemTime_2To1).Data, nullptr, enabled))
+						timeline.ExecuteTransformAction(context, scaleAction, param.SetTimeRatio(2, 1));
+					if (Gui::MenuItem(UI_Str("ACT_TRANSFORM_RATIO_3_2"), ToShortcutString(*Settings.Input.Timeline_ExpandItemTime_3To2).Data, nullptr, enabled))
+						timeline.ExecuteTransformAction(context, scaleAction, param.SetTimeRatio(3, 2));
+					if (Gui::MenuItem(UI_Str("ACT_TRANSFORM_RATIO_4_3"), ToShortcutString(*Settings.Input.Timeline_ExpandItemTime_4To3).Data, nullptr, enabled))
+						timeline.ExecuteTransformAction(context, scaleAction, param.SetTimeRatio(4, 3));
+					Gui::Separator();
+
+					if (Gui::MenuItem(UI_Str("ACT_TRANSFORM_RATIO_1_2"), ToShortcutString(*Settings.Input.Timeline_CompressItemTime_1To2).Data, nullptr, enabled))
+						timeline.ExecuteTransformAction(context, scaleAction, param.SetTimeRatio(1, 2));
+					if (Gui::MenuItem(UI_Str("ACT_TRANSFORM_RATIO_2_3"), ToShortcutString(*Settings.Input.Timeline_CompressItemTime_2To3).Data, nullptr, enabled))
+						timeline.ExecuteTransformAction(context, scaleAction, param.SetTimeRatio(2, 3));
+					if (Gui::MenuItem(UI_Str("ACT_TRANSFORM_RATIO_3_4"), ToShortcutString(*Settings.Input.Timeline_CompressItemTime_3To4).Data, nullptr, enabled))
+						timeline.ExecuteTransformAction(context, scaleAction, param.SetTimeRatio(3, 4));
+					Gui::Separator();
+
+					b8 willTouchTempo = (*Settings.General.TransformScale_ByTempo || *Settings.General.TransformScale_KeepTimePosition);
+					if (Gui::MenuItem(UI_Str("ACT_TRANSFORM_RATIO_0_1"), ToShortcutString(*Settings.Input.Timeline_CompressItemTime_0To1).Data, nullptr, enabled && !willTouchTempo))
+						timeline.ExecuteTransformAction(context, scaleAction, param.SetTimeRatio(0, 1));
+					if (Gui::MenuItem(willTouchTempo ? UI_Str("ACT_TRANSFORM_RATIO_N1_1_SCROLL") : UI_Str("ACT_TRANSFORM_RATIO_N1_1_TIME"), ToShortcutString(*Settings.Input.Timeline_ReverseItemTime_N1To1).Data, nullptr, enabled))
+						timeline.ExecuteTransformAction(context, scaleAction, param.SetTimeRatio(-1, 1));
+					Gui::Separator();
+
+					WithDefault<CustomScaleRatioList>& customRatios = Settings_Mutable.General.CustomScaleRatios;
+					WithDefault<MultiInputBinding>* customBindings[] =
+					{
+						&Settings_Mutable.Input.Timeline_ScaleItemTime_CustomA, &Settings_Mutable.Input.Timeline_ScaleItemTime_CustomB, &Settings_Mutable.Input.Timeline_ScaleItemTime_CustomC,
+						&Settings_Mutable.Input.Timeline_ScaleItemTime_CustomD, &Settings_Mutable.Input.Timeline_ScaleItemTime_CustomE, &Settings_Mutable.Input.Timeline_ScaleItemTime_CustomF,
+					};
+
+					const b8 disableAddNew = (customRatios->size() >= 6);
+					if (Gui::Selectable(UI_Str("ACT_TRANSFORM_ADD_NEW_RATIO"), false, ImGuiSelectableFlags_NoAutoClosePopups | (disableAddNew ? ImGuiSelectableFlags_Disabled : 0)))
+					{
+						static constexpr ivec2 defaultRatio = { 3, 1 };
+						const ivec2 newRatio = { defaultRatio[0] + static_cast<i32>(customRatios->size()), defaultRatio[1] };
+
+						customRatios->emplace_back(newRatio);
+						customRatios.SetHasValueIfNotDefault();
+						Settings_Mutable.IsDirty = true;
+					}
+
+					for (size_t i = 0; i < customRatios->size(); i++)
+					{
+						b8 canScale = (!willTouchTempo || ((*customRatios)[i].TimeRatio[0] != 0)) && ((*customRatios)[i].TimeRatio[1] != 0);
+						char label[64]; sprintf_s(label, "%s %c", UI_Str("ACT_TRANSFORM_CUSTOM_RATIO"), static_cast<char>('A' + i));
+						if (Gui::MenuItem(label, (i < ArrayCount(customBindings)) ? ToShortcutString(**customBindings[i]).Data : "", nullptr, enabled && canScale))
+							timeline.ExecuteTransformAction(context, scaleAction, param.SetTimeRatio((*customRatios)[i].TimeRatio));
+					}
+
+					size_t indexToRemove = customRatios->size();
+					for (size_t i = 0; i < customRatios->size(); i++)
+					{
+						auto& ratio = (*customRatios)[i];
+						Gui::PushID(&ratio);
+						Gui::PushStyleVar(ImGuiStyleVar_FramePadding, vec2(Gui::GetStyle().FramePadding.x, 0.0f));
+						{
+							char label[] = { static_cast<char>('A' + i), '\0' };
+							Gui::TextUnformatted(label);
+							Gui::SameLine();
+
+							Gui::SetNextItemWidth(Gui::GetContentRegionAvail().x);
+
+							Gui::BeginGroup();
+							if (GuiInputFraction("##Ratio", &ratio.TimeRatio, std::nullopt, 1, 4,
+								(*customRatios)[i].TimeRatio == ivec2{ 0, 0 } ? PtrArg(Gui::GetColorU32(ImGuiCol_TextDisabled))
+									: !IsTimeSignatureSupported({ ratio.TimeRatio[0], ratio.TimeRatio[1] }) ? &InputTextWarningTextColor
+									: nullptr,
+								" : ")
+								) {
+								customRatios.SetHasValueIfNotDefault();
+								Settings_Mutable.IsDirty = true;
+							}
+							Gui::EndGroup();
+							if (!(Gui::IsItemActive() || Gui::IsItemFocused()) && (*customRatios)[i].TimeRatio == ivec2{ 0, 0 })
+								indexToRemove = i;
+						}
+						Gui::PopStyleVar();
+						Gui::PopID();
+					}
+
+					if (indexToRemove < customRatios->size()) {
+						customRatios->erase(customRatios->begin() + indexToRemove);
+						customRatios.SetHasValueIfNotDefault();
+						Settings_Mutable.IsDirty = true;
+					}
+					if (!customRatios->empty())
+						Gui::MenuItem(UI_Str("INFO_TRANSFORM_CUSTOM_RATIO_DELETE"), nullptr, false, false);
+
+					for (const auto& [pSetting, label] : {
+						std::tuple{ &UserSettingsData::GeneralData::TransformScale_ByTempo, UI_Str("ACT_TRANSFORM_SCALE_BY_TEMPO") },
+						std::tuple{ &UserSettingsData::GeneralData::TransformScale_KeepTimePosition, UI_Str("ACT_TRANSFORM_SCALE_KEEP_TIME_POSITION") },
+						std::tuple{ &UserSettingsData::GeneralData::TransformScale_KeepTimeSignature, UI_Str("ACT_TRANSFORM_SCALE_KEEP_TIME_SIGNATURE") },
+						std::tuple{ &UserSettingsData::GeneralData::TransformScale_KeepItemDuration, UI_Str("ACT_TRANSFORM_SCALE_KEEP_ITEM_DURATION") },
+						}) {
+						if (b8 v = *(Settings.General.*pSetting); Gui::Checkbox(label, &v)) {
+							(Settings_Mutable.General.*pSetting).Value = v;
+							(Settings_Mutable.General.*pSetting).SetHasValueIfNotDefault();
+							Settings_Mutable.IsDirty = true;
+						}
+					}
+				};
+
+				if (Gui::BeginMenu(UI_Str("ACT_TRANSFORM_SCALE_ITEMS"))) {
+					scaleMenu(TransformAction::ScaleItemTime, isAnyItemSelected);
 					Gui::EndMenu();
 				}
 
-				if (Gui::BeginMenu(UI_Str("ACT_TRANSFORM_COMPRESS_ITEMS")))
-				{
-					if (Gui::MenuItem(UI_Str("ACT_TRANSFORM_RATIO_1_2"), ToShortcutString(*Settings.Input.Timeline_CompressItemTime_1To2).Data, nullptr, isAnyItemSelected))
-						timeline.ExecuteTransformAction(context, TransformAction::ScaleItemTime, param.SetTimeRatio(1, 2));
-					if (Gui::MenuItem(UI_Str("ACT_TRANSFORM_RATIO_2_3"), ToShortcutString(*Settings.Input.Timeline_CompressItemTime_2To3).Data, nullptr, isAnyItemSelected))
-						timeline.ExecuteTransformAction(context, TransformAction::ScaleItemTime, param.SetTimeRatio(2, 3));
-					if (Gui::MenuItem(UI_Str("ACT_TRANSFORM_RATIO_3_4"), ToShortcutString(*Settings.Input.Timeline_CompressItemTime_3To4).Data, nullptr, isAnyItemSelected))
-						timeline.ExecuteTransformAction(context, TransformAction::ScaleItemTime, param.SetTimeRatio(3, 4));
+				if (Gui::BeginMenu(UI_Str("ACT_TRANSFORM_SCALE_RANGE"))) {
+					scaleMenu(TransformAction::ScaleRangeTime, timeline.RangeSelection.IsActiveAndHasEnd());
 					Gui::EndMenu();
 				}
 
@@ -361,7 +460,6 @@ namespace PeepoDrumKit
 						nextLanguageToSelect = it.id;
 				}
 				Gui::Separator();
-				Gui::MenuItem(UI_Str("ACT_LANGUAGE_LOAD_FULL_CJKV_GLYPHS"), " ", &FontMainUseFullCJKVTarget);
 				if (Gui::MenuItem("Export Builtin Locale Files"))
 					i18n::ExportBuiltinLocaleFiles();
 				Gui::EndMenu();
@@ -458,18 +556,61 @@ namespace PeepoDrumKit
 
 						for (const auto& dt : difficulties)
 						{
-
 							char labelBuffer[128];
 							sprintf_s(labelBuffer, "%s", dt.CurrentName);
-
-							if (Gui::MenuItem(
-								labelBuffer, 
-								" ",
-								false,
-								!std::any_of(context.Chart.Courses.begin(), context.Chart.Courses.end(), [&dt](const std::unique_ptr<PeepoDrumKit::ChartCourse>& obj) { return obj->Type == dt.dType; })
-								))
+							if (Gui::MenuItem(labelBuffer, " ", false)) {
 								CreateNewDifficulty(context, dt.dType);
+								context.Undo.NotifyChangesWereMade();
+							}
 						}
+						Gui::EndMenu();
+					}
+
+					if (Gui::BeginMenu(UI_Str("ACT_COURSES_COMPARE_GROUP")))
+					{
+						static constexpr auto addToCompared = [](ChartContext& context, auto&& filter)
+						{
+							for (const auto& uptrCourse : context.Chart.Courses) {
+								if (const auto* course = uptrCourse.get(); filter(course))
+									context.ChartsCompared[course].insert(BranchType::Normal);
+							}
+							context.CompareMode |= (size(context.ChartsCompared) > 1);
+						};
+
+						b8 isComparingNone = (size(context.ChartsCompared) <= 1);
+						b8 isComparingAll = (size(context.ChartsCompared) == size(context.Chart.Courses));
+
+						if (Gui::MenuItem(UI_Str("ACT_COURSES_COMPARE_NONE"), " ", nullptr, !isComparingNone))
+							context.ResetChartsCompared();
+						if (Gui::MenuItem(UI_Str("ACT_COURSES_COMPARE_ALL"), " ", nullptr, !isComparingAll))
+							addToCompared(context, [](...) { return true; });
+
+						Gui::Separator();
+
+						static constexpr auto addToComparedNested = [&](ChartContext& context, auto&& filter)
+						{
+							for (const auto& [course, branch] : context.ChartsCompared)
+								addToCompared(context, [&](const auto* courseI) { return filter(course, courseI); });
+						};
+						static constexpr auto getNDiffs = [](const ChartCourse* course, const ChartCourse* courseI)
+						{
+							return (course->Type != courseI->Type) + (course->Style != courseI->Style) + (course->PlayerSide != courseI->PlayerSide);
+						};
+
+						if (Gui::MenuItem(UI_Str("ACT_COURSES_COMPARE_ACROSS_DIFFICULTIES"), " ", nullptr, !isComparingAll))
+							addToComparedNested(context, [](auto a, auto b) { return (getNDiffs(a, b) - (a->Type != b->Type)) == 0; });
+						if (Gui::MenuItem(UI_Str("ACT_COURSES_COMPARE_ACROSS_PLAYERCOUNTS"), " ", nullptr, !isComparingAll))
+							addToComparedNested(context, [](auto a, auto b) { return (getNDiffs(a, b) - (a->Style != b->Style)) == 0; });
+						if (Gui::MenuItem(UI_Str("ACT_COURSES_COMPARE_ACROSS_PLAYERSIDES"), " ", nullptr, !isComparingAll))
+							addToComparedNested(context, [](auto a, auto b) { return (getNDiffs(a, b) - (a->PlayerSide != b->PlayerSide)) == 0; });
+						if (Gui::MenuItem(UI_Str("ACT_COURSES_COMPARE_ACROSS_BRANCHES"), "(TODO)", nullptr, false))
+							/* TODO */;
+
+						Gui::Separator();
+
+						if (Gui::MenuItem(UI_Str("ACT_COURSES_COMPARE_MODE"), " ", &context.CompareMode) && !context.CompareMode)
+							context.ResetChartsCompared();
+
 						Gui::EndMenu();
 					}
 
@@ -479,54 +620,140 @@ namespace PeepoDrumKit
 
 				if (Gui::BeginChild("MenuBarTabsChild", vec2(-(audioMenuWidth + performanceMenuWidth + Gui::GetStyle().ItemSpacing.x), 0.0f)))
 				{
-					// NOTE: To essentially make these tab items look similar to regular menu items (the inverted Active <-> Hovered colors are not a mistake)
-					Gui::PushStyleColor(ImGuiCol_TabHovered, Gui::GetStyleColorVec4(ImGuiCol_HeaderActive));
-					Gui::PushStyleColor(ImGuiCol_TabSelected, Gui::GetStyleColorVec4(ImGuiCol_HeaderHovered));
-					if (Gui::BeginTabBar("MenuBarTabs", ImGuiTabBarFlags_FittingPolicyScroll))
+					auto tabBarFlags = (ImGuiTabBarFlags_Reorderable | ImGuiTabBarFlags_FittingPolicyScroll);
+					i32 nPushedStyleColor = 0;
+					if (!context.CompareMode) {
+						// NOTE: To essentially make these tab items look similar to regular menu items (the inverted Active <-> Hovered colors are not a mistake)
+						Gui::PushStyleColor(ImGuiCol_TabHovered, Gui::GetStyleColorVec4(ImGuiCol_HeaderActive));
+						Gui::PushStyleColor(ImGuiCol_TabSelected, Gui::GetStyleColorVec4(ImGuiCol_HeaderHovered));
+						nPushedStyleColor += 2;
+					} else {
+						tabBarFlags |= ImGuiTabBarFlags_DrawSelectedOverline;
+					}
+
+					if (Gui::BeginTabBar("MenuBarTabs", tabBarFlags))
 					{
 						// HACK: How to properly manage the imgui selected tab internal state..?
 						static const ChartCourse* lastFrameSelectedCoursePtrID = nullptr;
 						b8 isAnyCourseTabSelected = false;
 
+						// Reorder courses by querying tab bar order
+						if (ImGuiTabBar* tab_bar = Gui::GetCurrentTabBar(); tab_bar->ReorderRequestTabId != 0) {
+							// save current order
+							std::vector<ImGuiID> tabIdx = {};
+							for (const auto& tab : tab_bar->Tabs)
+								tabIdx.push_back(tab.ID);
+							// force update order
+							Gui::TabBarProcessReorder(tab_bar);
+							tab_bar->ReorderRequestTabId = 0; // cancel further reorder
+							// reorder courses into updated tab order
+							auto& courses = context.Chart.Courses;
+							std::vector<std::unique_ptr<ChartCourse>> reorderedCourses (size(courses));
+							for (size_t i = 0; i < std::size(courses); ++i) {
+								auto& course = courses[i];
+								ImGuiTabItem* tab = Gui::TabBarFindTabByID(tab_bar, tabIdx[i]);
+								assert(tab != nullptr && "failed to reorder courses; found a course without tab");
+								i32 newOrder = Gui::TabBarGetTabOrder(tab_bar, tab);
+								assert(newOrder >= 0 && newOrder < size(courses) && "failed to reorder courses; found a tab without course");
+								reorderedCourses[newOrder] = std::move(course);
+							}
+							courses = std::move(reorderedCourses);
+							context.Undo.NotifyChangesWereMade();
+						}
+
 						for (std::unique_ptr<ChartCourse>& course : context.Chart.Courses)
 						{
-							char buffer[64]; sprintf_s(buffer, "%s \xe2\x98\x85%d%s (%s)###Course_%p", UI_StrRuntime(
-								DifficultyTypeNames[EnumToIndex(course->Type)]), 
+							char buffer[96]; sprintf_s(buffer, u8"%s ★%d%s %s###Course_%p",
+								UI_StrRuntime(DifficultyTypeNames[EnumToIndex(course->Type)]),
 								static_cast<i32>(course->Level), 
 								(course->Decimal == DifficultyLevelDecimal::None) ? "" : ((course->Decimal >= DifficultyLevelDecimal::PlusThreshold) ? "+" : ""),
-								UI_Str("PLAYER_SIDE_STYLE_SINGLE"), 
+								GetStyleName(course->Style, course->PlayerSide).data(),
 								course.get());
-							const b8 setSelectedThisFrame = (course.get() == context.ChartSelectedCourse && course.get() != lastFrameSelectedCoursePtrID);
+							const b8 isSelected = (course.get() == context.ChartSelectedCourse);
+							const b8 setSelectedThisFrame = (isSelected && course.get() != lastFrameSelectedCoursePtrID);
 
 							Gui::PushID(course.get());
 
-							if ((i32)course->Level >= 11)
+							i32 nPushedStyleColorI = 0;
+							if ((i32)course->Level >= 11) {
 								Gui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 122, 122, 255));
+								++nPushedStyleColorI;
+							}
+
+							const b8 wasCompared = (context.CompareMode && context.IsChartCompared(course.get(), BranchType::Normal));
+							if (wasCompared) { // display compared courses as hovered
+								Gui::PushStyleColor(ImGuiCol_TabHovered, Gui::GetStyleColorVec4(ImGuiCol_HeaderActive));
+								Gui::PushStyleColor(ImGuiCol_Tab, Gui::GetStyleColorVec4(ImGuiCol_HeaderHovered));
+								nPushedStyleColorI += 2;
+							}
 
 							if (Gui::BeginTabItem(buffer, nullptr, setSelectedThisFrame ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None))
 							{
 								// TODO: Selecting a course should also be an undo command so that there isn't ever any confusion (?)
-								context.ChartSelectedCourse = course.get();
+								context.SetSelectedChart(course.get(), BranchType::Normal);
+								lastFrameSelectedCoursePtrID = context.ChartSelectedCourse;
 								isAnyCourseTabSelected = true;
 								Gui::EndTabItem();
 							}
 
-							if ((i32)course->Level >= 11)
-								Gui::PopStyleColor();
+							Gui::PopStyleColor(nPushedStyleColorI);
+
+							if (Gui::BeginPopupContextItem()) {
+								const b8 isOnlyCourse = isSelected && (size(context.ChartsCompared) <= 1);
+								if (b8 isCompared = isSelected || wasCompared; Gui::MenuItem(UI_Str("ACT_COURSES_COMPARE_THIS"), " ", &isCompared, !isOnlyCourse)) {
+									if (isCompared) { // add
+										context.ChartsCompared[course.get()].insert(BranchType::Normal);
+									} else if (!isSelected) { // remove
+										if (auto& branches = context.ChartsCompared[course.get()]; branches.size() > 1)
+											branches.erase(BranchType::Normal);
+										else
+											context.ChartsCompared.erase(course.get());
+									} else { // remove & select next chart
+										if (auto& branches = context.ChartsCompared[course.get()]; branches.size() > 1) {
+											auto it = branches.find(BranchType::Normal);
+											context.ChartSelectedBranch = (it != end(branches) && ++it != end(branches)) ? *it : *begin(branches);
+											branches.erase(BranchType::Normal);
+										} else {
+											const auto itEnd = end(context.Chart.Courses);
+											auto itL = itEnd, itNext = itEnd;
+											auto* pit = &itL;
+											for (auto it = begin(context.Chart.Courses); it != itEnd; ++it) {
+												if (it->get() == course.get()) {
+													pit = &itNext;
+												} else if (*pit == itEnd && context.ChartsCompared.find(it->get()) != cend(context.ChartsCompared)) {
+													*pit = it;
+													if (pit == &itNext)
+														break;
+												}
+											}
+											if (itNext == itEnd)
+												itNext = itL;
+											context.SetSelectedChart(itNext->get(), *begin(context.ChartsCompared[itNext->get()]));
+											context.ChartsCompared.erase(course.get());
+											// give away tab focus
+											ImGuiTabBar* tab_bar = Gui::GetCurrentTabBar();
+											Gui::TabBarQueueFocus(tab_bar, Gui::TabBarFindTabByOrder(tab_bar, itNext - begin(context.Chart.Courses)));
+										}
+									}
+								}
+								if (Gui::MenuItem(UI_Str("ACT_COURSES_COMPARE_MODE"), " ", &context.CompareMode) && !context.CompareMode)
+									context.ResetChartsCompared();
+
+								Gui::EndPopup();
+							}
 
 							Gui::PopID();
 						}
 
-						lastFrameSelectedCoursePtrID = context.ChartSelectedCourse;
 						if (!isAnyCourseTabSelected)
 						{
 							assert(!context.Chart.Courses.empty() && "Courses must never be empty so that the selected course always points to a valid object");
-							context.ChartSelectedCourse = context.Chart.Courses.front().get();
+							context.SetSelectedChart(context.Chart.Courses.front().get(), BranchType::Normal);
 						}
 
 						Gui::EndTabBar();
 					}
-					Gui::PopStyleColor(2);
+					Gui::PopStyleColor(nPushedStyleColor);
 				}
 				Gui::EndChild();
 			}
@@ -639,6 +866,11 @@ namespace PeepoDrumKit
 			Audio::Engine.SetBackend(*Settings.Audio.RequestExclusiveDeviceAccess ? Audio::Backend::WASAPI_Exclusive : Audio::Backend::WASAPI_Shared);
 			GlobalLastSetRequestExclusiveDeviceAccessAudioSetting = *Settings.Audio.RequestExclusiveDeviceAccess;
 		}
+		if (GlobalLastSetAudioBufferFrameSize != *Settings.Audio.BufferFrameSize)
+		{
+			Audio::Engine.SetBufferFrameSize(*Settings.Audio.BufferFrameSize);
+			GlobalLastSetAudioBufferFrameSize = *Settings.Audio.BufferFrameSize;
+		}
 		EnableGuiScaleAnimation = *Settings.Animation.EnableGuiScaleAnimation;
 
 		// NOTE: Window focus audio engine response
@@ -659,7 +891,7 @@ namespace PeepoDrumKit
 		// NOTE: Apply volume
 		{
 			context.SongVoice.SetVolume(context.Chart.SongVolume);
-			context.SfxVoicePool.BaseVolumeSfx = context.Chart.SoundEffectVolume;
+			context.SfxVoicePool.SetSoundGroupVolume(SoundGroup::SoundEffects, context.Chart.SoundEffectVolume);
 		}
 
 		// NOTE: Drag and drop handling
@@ -740,16 +972,6 @@ namespace PeepoDrumKit
 			Gui::End();
 		}
 
-		if (PersistentApp.LastSession.ShowWindow_ChartStats)
-		{
-			if (Gui::Begin(UI_WindowName("TAB_CHART_STATS"), &PersistentApp.LastSession.ShowWindow_ChartStats, ImGuiWindowFlags_None))
-			{
-				chartStatsWindow.DrawGui(context);
-			}
-			if (focusChartStatsWindowNextFrame) { focusChartStatsWindowNextFrame = false; Gui::SetWindowFocus(); }
-			Gui::End();
-		}
-
 		if (PersistentApp.LastSession.ShowWindow_Settings)
 		{
 			if (Gui::Begin(UI_WindowName("TAB_SETTINGS"), &PersistentApp.LastSession.ShowWindow_Settings, ImGuiWindowFlags_None))
@@ -811,6 +1033,16 @@ namespace PeepoDrumKit
 		}
 		Gui::End();
 
+		if (PersistentApp.LastSession.ShowWindow_ChartStats)
+		{
+			if (Gui::Begin(UI_WindowName("TAB_CHART_STATS"), &PersistentApp.LastSession.ShowWindow_ChartStats, ImGuiWindowFlags_None))
+			{
+				chartStatsWindow.DrawGui(context);
+			}
+			if (focusChartStatsWindowNextFrame) { focusChartStatsWindowNextFrame = false; Gui::SetWindowFocus(); }
+			Gui::End();
+		}
+
 #if PEEPO_DEBUG // DEBUG: Manually submit debug window before the timeline window is drawn for better tab ordering
 		if (Gui::Begin(UI_WindowName("TAB_TIMELINE_DEBUG"))) { /* ... */ } Gui::End();
 #endif
@@ -861,7 +1093,12 @@ namespace PeepoDrumKit
 							createBackupOfOriginalTJABeforeOverwriteSave = false;
 							context.Chart = std::move(convertedChart);
 							context.ChartFilePath = tjaTestWindow.LoadedTJAFile.FilePath;
-							context.ChartSelectedCourse = context.Chart.Courses.empty() ? context.Chart.Courses.emplace_back(std::make_unique<ChartCourse>()).get() : context.Chart.Courses.front().get();
+							context.ResetChartsCompared();
+							context.SetSelectedChart(
+								context.Chart.Courses.empty() ?
+									context.Chart.Courses.emplace_back(std::make_unique<ChartCourse>()).get()
+									: context.Chart.Courses.front().get(),
+								BranchType::Normal);
 							context.Undo.ClearAll();
 						});
 					}
@@ -874,8 +1111,8 @@ namespace PeepoDrumKit
 				if (Gui::Begin(UI_WindowName("TAB_AUDIO_TEST"), &PersistentApp.LastSession.ShowWindow_AudioTest, ImGuiWindowFlags_None))
 				{
 					audioTestWindow.DrawGui();
-					Gui::End();
 				}
+				Gui::End();
 			}
 
 			// DEBUG: LIVE PREVIEW PagMan
@@ -942,7 +1179,7 @@ namespace PeepoDrumKit
 			Gui::PushStyleVar(ImGuiStyleVar_WindowRounding, GuiScale(6.0f));
 			Gui::PushStyleColor(ImGuiCol_WindowBg, Gui::ColorU32WithNewAlpha(Gui::GetColorU32(ImGuiCol_FrameBg), 1.0f));
 			Gui::PushStyleColor(ImGuiCol_Button, 0x00000000);
-			Gui::PushFont(FontMedium_EN);
+			Gui::PushFont(FontMain, GuiScaleI32_AtTarget(FontBaseSizes::Medium));
 
 			constexpr ImGuiWindowFlags popupFlags =
 				ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoFocusOnAppearing |
@@ -1001,7 +1238,7 @@ namespace PeepoDrumKit
 			if (Gui::BeginPopupModal(UI_WindowName(saveConfirmationPopupID), &isPopupOpen, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings))
 			{
 				const vec2 buttonSize = GuiScale(vec2(120.0f, 0.0f));
-				Gui::PushFont(FontMedium_EN);
+				Gui::PushFont(FontMain, GuiScaleI32_AtTarget(FontBaseSizes::Medium));
 				{
 					// NOTE: Manual child size calculation required for proper dynamic scaling
 					Gui::BeginChild("TextChild", vec2((buttonSize.x * 3.0f) + Gui::GetStyle().ItemSpacing.x, Gui::GetFontSize() * 3.0f), true, ImGuiWindowFlags_NoBackground);
@@ -1074,6 +1311,7 @@ namespace PeepoDrumKit
 
 			Gui::DockBuilderDockWindow(UI_WindowName("TAB_UNDO_HISTORY"), dock.TopRight);
 			Gui::DockBuilderDockWindow(UI_WindowName("TAB_CHART_PROPERTIES"), dock.TopRight);
+			Gui::DockBuilderDockWindow(UI_WindowName("TAB_CHART_STATS"), dock.TopRight);
 
 			Gui::DockBuilderDockWindow(UI_WindowName("TAB_INSPECTOR"), dock.TopRightBot);
 		}
@@ -1118,8 +1356,12 @@ namespace PeepoDrumKit
 		createBackupOfOriginalTJABeforeOverwriteSave = false;
 		context.Chart = {};
 		context.ChartFilePath.clear();
-		context.ChartSelectedCourse = context.Chart.Courses.empty() ? context.Chart.Courses.emplace_back(std::make_unique<ChartCourse>()).get() : context.Chart.Courses.front().get();
-		context.ChartSelectedBranch = BranchType::Normal;
+		context.ResetChartsCompared();
+		context.SetSelectedChart(
+			context.Chart.Courses.empty() ?
+				context.Chart.Courses.emplace_back(std::make_unique<ChartCourse>()).get()
+				: context.Chart.Courses.front().get(),
+			BranchType::Normal);
 		SetChartDefaultSettingsAndCourses(context.Chart);
 
 		context.SetIsPlayback(false);
@@ -1144,8 +1386,7 @@ namespace PeepoDrumKit
 			break;
 		}
 
-		context.ChartSelectedCourse = context.Chart.Courses.emplace_back(std::move(ccourse)).get();
-		context.ChartSelectedBranch = BranchType::Normal;
+		context.SetSelectedChart(context.Chart.Courses.emplace_back(std::move(ccourse)).get(), BranchType::Normal);
 	}
 
 	void ChartEditor::SaveChart(ChartContext& context, std::string_view filePath)
@@ -1185,7 +1426,7 @@ namespace PeepoDrumKit
 		static constexpr auto getChartFileNameWithoutExtensionOrDefault = [](const ChartContext& context) -> std::string_view
 		{
 			if (!context.ChartFilePath.empty()) return Path::GetFileName(context.ChartFilePath, false);
-			if (!context.Chart.ChartTitle.Base().empty()) return context.Chart.ChartTitle.Base();
+			if (!context.Chart.ChartTitle.empty()) return context.Chart.ChartTitle;
 			return Path::TrimExtension(UntitledChartFileName);
 		};
 
@@ -1428,7 +1669,12 @@ namespace PeepoDrumKit
 
 			context.Chart = std::move(loadResult.Chart);
 			context.ChartFilePath = std::move(loadResult.ChartFilePath);
-			context.ChartSelectedCourse = context.Chart.Courses.empty() ? context.Chart.Courses.emplace_back(std::make_unique<ChartCourse>()).get() : context.Chart.Courses.front().get();
+			context.ResetChartsCompared();
+			context.SetSelectedChart(
+				context.Chart.Courses.empty() ?
+					context.Chart.Courses.emplace_back(std::make_unique<ChartCourse>()).get()
+					: context.Chart.Courses.front().get(),
+				BranchType::Normal);
 			StartAsyncLoadingSongAudioFile(Path::TryMakeAbsolute(context.Chart.SongFileName, context.ChartFilePath));
 			StartAsyncLoadingSongJacketFile(Path::TryMakeAbsolute(context.Chart.SongJacket, context.ChartFilePath));
 
@@ -1453,8 +1699,8 @@ namespace PeepoDrumKit
 			context.SongWaveformFadeAnimationTarget = context.SongWaveformL.IsEmpty() ? 0.0f : 1.0f;
 
 			// TODO: Maybe handle this differently...
-			if (context.Chart.ChartTitle.Base().empty() && !context.SongSourceFilePath.empty())
-				context.Chart.ChartTitle.Base() = Path::GetFileName(context.SongSourceFilePath, false);
+			if (context.Chart.ChartTitle.empty() && !context.SongSourceFilePath.empty())
+				context.Chart.ChartTitle = Path::GetFileName(context.SongSourceFilePath, false);
 
 			if (context.Chart.ChartDuration.Seconds <= 0.0 && loadResult.SampleBuffer.SampleRate > 0)
 				context.Chart.ChartDuration = Audio::FramesToTime(loadResult.SampleBuffer.FrameCount, loadResult.SampleBuffer.SampleRate);

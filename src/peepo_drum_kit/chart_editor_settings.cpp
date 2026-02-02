@@ -42,7 +42,7 @@ namespace PeepoDrumKit
 		if (in == "") { return true; }
 		if (in == "true") { out = true; return true; }
 		if (in == "false") { out = false; return true; }
-		if (i32 v = 0; ASCII::TryParseI32(in, v)) { out = (v != 0); return true; }
+		if (i32 v = 0; ASCII::TryParse(in, v)) { out = (v != 0); return true; }
 		return false;
 	}
 
@@ -51,7 +51,7 @@ namespace PeepoDrumKit
 		if (in == "") { out.Reset(); return true; }
 		if (in == "true") { out.SetValue(true); return true; }
 		if (in == "false") { out.SetValue(false); return true; }
-		if (i32 v = 0; ASCII::TryParseI32(in, v)) { out.SetValue((v != 0)); return true; }
+		if (i32 v = 0; ASCII::TryParse(in, v)) { out.SetValue((v != 0)); return true; }
 		return false;
 	}
 
@@ -66,10 +66,10 @@ namespace PeepoDrumKit
 		ASCII::ForEachInCommaSeparatedList(in, [&, index = 0](std::string_view value) mutable
 		{
 			value = ASCII::Trim(value);
-			if (index == 0) { outSuccess &= ASCII::TryParseF32(value, outTL.x); }
-			if (index == 1) { outSuccess &= ASCII::TryParseF32(value, outTL.y); }
-			if (index == 2) { outSuccess &= ASCII::TryParseF32(value, outSize.x); }
-			if (index == 3) { outSuccess &= ASCII::TryParseF32(value, outSize.y); }
+			if (index == 0) { outSuccess &= ASCII::TryParse(value, outTL.x); }
+			if (index == 1) { outSuccess &= ASCII::TryParse(value, outTL.y); }
+			if (index == 2) { outSuccess &= ASCII::TryParse(value, outSize.x); }
+			if (index == 3) { outSuccess &= ASCII::TryParse(value, outSize.y); }
 			index++;
 		});
 		out = Rect::FromTLSize(outTL, outSize); return outSuccess;
@@ -81,7 +81,7 @@ namespace PeepoDrumKit
 
 		static IniMemberParseResult FromString(std::string_view stringToParse, i32& out)
 		{
-			return ASCII::TryParseI32(stringToParse, out) ? IniMemberParseResult {} : MemberParseError("Invalid int");
+			return ASCII::TryParse(stringToParse, out) ? IniMemberParseResult {} : MemberParseError("Invalid int");
 		}
 
 		static void ToString(const i32& in, std::string& stringToAppendTo)
@@ -91,7 +91,7 @@ namespace PeepoDrumKit
 
 		static IniMemberParseResult FromString(std::string_view stringToParse, f32& out)
 		{
-			return ASCII::TryParseF32(stringToParse, out) ? IniMemberParseResult {} : MemberParseError("Invalid float");
+			return ASCII::TryParse(stringToParse, out) ? IniMemberParseResult {} : MemberParseError("Invalid float");
 		}
 
 		static void ToString(const f32& in, std::string& stringToAppendTo)
@@ -121,7 +121,7 @@ namespace PeepoDrumKit
 
 		static IniMemberParseResult FromString(std::string_view stringToParse, Beat& out)
 		{
-			return ASCII::TryParseI32(stringToParse, out.Ticks) ? IniMemberParseResult {} : MemberParseError("Invalid int");
+			return ASCII::TryParse(stringToParse, out.Ticks) ? IniMemberParseResult {} : MemberParseError("Invalid int");
 		}
 
 		static void ToString(const Beat& in, std::string& stringToAppendTo)
@@ -129,48 +129,101 @@ namespace PeepoDrumKit
 			char b[32]; stringToAppendTo += std::string_view(b, sprintf_s(b, "%d", in.Ticks));
 		}
 
-		static IniMemberParseResult FromString(std::string_view stringToParse, PlaybackSpeedStepList& out)
+		static IniMemberParseResult FromString(std::string_view stringToParse, CustomSelectionPattern& out)
+		{
+			CopyStringViewIntoFixedBuffer(out.Data, stringToParse);
+			return {};
+		}
+
+		static void ToString(const CustomSelectionPattern& in, std::string& stringToAppendTo)
+		{
+			stringToAppendTo += FixedBufferStringView(in.Data);
+		}
+
+		static IniMemberParseResult FromString(std::string_view stringToParse, CustomScaleRatio& out)
+		{
+			IniMemberParseResult res = {};
+			ASCII::ForEachInCharSeparatedList(stringToParse, ':', [&, i = 0](std::string_view part) mutable
+			{
+				auto resI = (i >= 2) ? MemberParseError("More than 2 ratio components")
+					: FromString(ASCII::Trim(part), out.TimeRatio[i++]);
+				if (resI.HasError)
+					res = resI;
+			});
+			return res;
+		}
+
+		static void ToString(const CustomScaleRatio& in, std::string& stringToAppendTo)
+		{
+			ToString(in.TimeRatio[0], stringToAppendTo);
+			stringToAppendTo += ":";
+			ToString(in.TimeRatio[1], stringToAppendTo);
+		}
+
+		template <typename TOption, typename TIn = TOption, typename FnConvert = void>
+		static IniMemberParseResult FromString(std::string_view stringToParse, std::vector<TOption>& out, FnConvert fnConvert)
 		{
 			b8 hasAnyError = false;
+			cstr lastErrorMessage = nullptr;
 			size_t expectedCount = 0;
 			ASCII::ForEachInCommaSeparatedList(stringToParse, [&](std::string_view) { expectedCount++; });
-			out.V.clear();
-			out.V.reserve(expectedCount);
+			out.clear();
+			out.reserve(expectedCount);
 			ASCII::ForEachInCommaSeparatedList(stringToParse, [&](std::string_view commaSeparatedValue)
 			{
-				if (f32 v = 0.0f; ASCII::TryParseF32(ASCII::Trim(commaSeparatedValue), v))
-					out.V.push_back(FromPercent(v));
-				else
+				TIn v = {};
+				IniMemberParseResult res = FromString(ASCII::Trim(commaSeparatedValue), v);
+				if (res.HasError) {
 					hasAnyError = true;
+					lastErrorMessage = res.ErrorMessage;
+				}
+				else {
+					out.push_back(fnConvert(v));
+				}
 			});
-			return hasAnyError ? MemberParseError("Invalid float") : IniMemberParseResult {};
+			return hasAnyError ? MemberParseError(lastErrorMessage) : IniMemberParseResult{};
+		}
+
+		template <typename TOption, typename FnConvert>
+		static void ToString(const std::vector<TOption>& in, std::string& stringToAppendTo, FnConvert fnConvert)
+		{
+			for (size_t i = 0; i < in.size(); i++) {
+				if (i > 0)
+					stringToAppendTo += ", ";
+				ToString(fnConvert(in[i]), stringToAppendTo);
+			}
+		}
+
+		template <typename TOption>
+		static IniMemberParseResult FromString(std::string_view stringToParse, std::vector<TOption>& out)
+		{
+			return FromString(stringToParse, out, [](auto&& x) { return x; });
+		}
+
+		template <typename TOption>
+		static void ToString(const std::vector<TOption>& in, std::string& stringToAppendTo)
+		{
+			ToString(in, stringToAppendTo, [](auto&& x) { return x; });
+		}
+
+		static IniMemberParseResult FromString(std::string_view stringToParse, PlaybackSpeedStepList& out)
+		{
+			return FromString(stringToParse, out.V, FromPercent);
 		}
 
 		static void ToString(const PlaybackSpeedStepList& in, std::string& stringToAppendTo)
 		{
-			char b[32];
-			for (size_t i = 0; i < in.V.size(); i++)
-				stringToAppendTo += std::string_view(b, sprintf_s(b, (i > 0) ? ", %g" : "%g", ToPercent(in.V[i])));
+			ToString(in.V, stringToAppendTo, ToPercent);
 		}
 
 		static IniMemberParseResult FromString(std::string_view stringToParse, CustomSelectionPatternList& out)
 		{
-			b8 hasAnyError = false;
-			size_t expectedCount = 0;
-			ASCII::ForEachInCommaSeparatedList(stringToParse, [&](std::string_view) { expectedCount++; });
-			out.V.clear();
-			out.V.reserve(expectedCount);
-			ASCII::ForEachInCommaSeparatedList(stringToParse, [&](std::string_view commaSeparatedValue)
-			{
-				CopyStringViewIntoFixedBuffer(out.V.emplace_back().Data, ASCII::Trim(commaSeparatedValue));
-			});
-			return hasAnyError ? MemberParseError("Invalid float") : IniMemberParseResult {};
+			return FromString(stringToParse, out.V);
 		}
 
 		static void ToString(const CustomSelectionPatternList& in, std::string& stringToAppendTo)
 		{
-			for (size_t i = 0; i < in.V.size(); i++)
-				stringToAppendTo.append((i > 0) ? ", " : "").append(in.V[i].Data);
+			ToString(in.V, stringToAppendTo);
 		}
 
 		static IniMemberParseResult FromString(std::string_view stringToParse, MultiInputBinding& out)
@@ -236,9 +289,9 @@ namespace PeepoDrumKit
 						// TODO: ...
 					}
 				}
-				else if (it.Key == "gui_scale") { if (f32 v = out.LastSession.GuiScale; ASCII::TryParseF32(in, v)) out.LastSession.GuiScale = FromPercent(v); else return parser.Error_InvalidFloat(); }
+				else if (it.Key == "gui_scale") { if (f32 v = out.LastSession.GuiScale; ASCII::TryParse(in, v)) out.LastSession.GuiScale = FromPercent(v); else return parser.Error_InvalidFloat(); }
 				else if (it.Key == "gui_language") { out.LastSession.GuiLanguage = in; }
-				else if (it.Key == "os_window_swap_interval") { if (!ASCII::TryParseI32(in, out.LastSession.OSWindow_SwapInterval)) return parser.Error_InvalidInt(); }
+				else if (it.Key == "os_window_swap_interval") { if (!ASCII::TryParse(in, out.LastSession.OSWindow_SwapInterval)) return parser.Error_InvalidInt(); }
 				else if (it.Key == "os_window_region") { if (!RectFromTLSizeString(in, out.LastSession.OSWindow_Region)) return parser.Error_InvalidRect(); }
 				else if (it.Key == "os_window_region_restore") { if (!RectFromTLSizeString(in, out.LastSession.OSWindow_RegionRestore)) return parser.Error_InvalidRect(); }
 				else if (it.Key == "os_window_is_fullscreen") { if (!BoolFromString(in, out.LastSession.OSWindow_IsFullscreen)) return parser.Error_InvalidBool(); }
@@ -257,7 +310,7 @@ namespace PeepoDrumKit
 			else if (parser.CurrentSection == "recent_files")
 			{
 				const std::string_view indexSuffix = ASCII::TrimPrefix(it.Key, "file_");
-				if (i32 v = 0; ASCII::TryParseI32(indexSuffix, v))
+				if (i32 v = 0; ASCII::TryParse(indexSuffix, v))
 					out.RecentFiles.Add(std::string { in }, true);
 				else
 					return parser.Error("Invalid file index");
@@ -412,11 +465,17 @@ namespace PeepoDrumKit
 			X(General.ConvertSelectionToScrollChanges_UnselectOld, "convert_selection_to_scroll_changes_unselect_old");
 			X(General.ConvertSelectionToScrollChanges_SelectNew, "convert_selection_to_scroll_changes_select_new");
 			X(General.CustomSelectionPatterns, "custom_selection_patterns");
+			X(General.CustomScaleRatios, "custom_scale_ratios");
+			X(General.TransformScale_ByTempo, "transform_scale_by_tempo");
+			X(General.TransformScale_KeepTimePosition, "transform_scale_keep_time_position");
+			X(General.TransformScale_KeepTimeSignature, "transform_scale_keep_time_signature");
+			X(General.TransformScale_KeepItemDuration, "transform_scale_keep_item_duration");
 
 			SECTION("audio");
 			X(Audio.OpenDeviceOnStartup, "open_device_on_startup");
 			X(Audio.CloseDeviceOnIdleFocusLoss, "close_device_on_idle_focus_loss");
 			X(Audio.RequestExclusiveDeviceAccess, "request_exclusive_device_access");
+			X(Audio.BufferFrameSize, "buffer_frame_size");
 
 			SECTION("animation");
 			X(Animation.EnableGuiScaleAnimation, "enable_gui_scale_animation");
@@ -461,6 +520,7 @@ namespace PeepoDrumKit
 			X(Input.Timeline_SelectAll, "timeline_select_all");
 			X(Input.Timeline_ClearSelection, "timeline_clear_selection");
 			X(Input.Timeline_InvertSelection, "timeline_invert_selection");
+			X(Input.Timeline_SelectToChartEnd, "timeline_select_to_chart_end");
 			X(Input.Timeline_SelectAllWithinRangeSelection, "timeline_select_all_within_range_selection");
 			X(Input.Timeline_ShiftSelectionLeft, "timeline_shift_selection_left");
 			X(Input.Timeline_ShiftSelectionRight, "timeline_shift_selection_right");
@@ -483,6 +543,14 @@ namespace PeepoDrumKit
 			X(Input.Timeline_CompressItemTime_1To2, "timeline_compress_item_time_1_to_2");
 			X(Input.Timeline_CompressItemTime_2To3, "timeline_compress_item_time_2_to_3");
 			X(Input.Timeline_CompressItemTime_3To4, "timeline_compress_item_time_3_to_4");
+			X(Input.Timeline_CompressItemTime_0To1, "timeline_compress_item_time_0_to_1");
+			X(Input.Timeline_ReverseItemTime_N1To1, "timeline_reverse_item_time_n1_to_1");
+			X(Input.Timeline_ScaleItemTime_CustomA, "timeline_scale_item_time_custom_a");
+			X(Input.Timeline_ScaleItemTime_CustomB, "timeline_scale_item_time_custom_b");
+			X(Input.Timeline_ScaleItemTime_CustomC, "timeline_scale_item_time_custom_c");
+			X(Input.Timeline_ScaleItemTime_CustomD, "timeline_scale_item_time_custom_d");
+			X(Input.Timeline_ScaleItemTime_CustomE, "timeline_scale_item_time_custom_e");
+			X(Input.Timeline_ScaleItemTime_CustomF, "timeline_scale_item_time_custom_f");
 			X(Input.Timeline_StepCursorLeft, "timeline_step_cursor_left");
 			X(Input.Timeline_StepCursorRight, "timeline_step_cursor_right");
 			X(Input.Timeline_JumpToTimelineStart, "timeline_jump_to_timeline_start");

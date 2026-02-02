@@ -1,4 +1,4 @@
-#include "chart_editor_settings_gui.h"
+﻿#include "chart_editor_settings_gui.h"
 
 namespace PeepoDrumKit
 {
@@ -136,7 +136,12 @@ namespace PeepoDrumKit
 		template <> constexpr DataType TemplateToDataType<f32>() { return DataType::F32; }
 		template <> constexpr DataType TemplateToDataType<std::string>() { return DataType::StdString; }
 
-		enum class WidgetType : u32 { Default, B8_ChartSongSpaceComboBox, B8_ExclusiveAudioComboBox, I32_BarDivisionComboBox, F32_TimelineScrollSensitivity, F32_ExponentialSpeed, };
+		enum class WidgetType : u32 {
+			Default,
+			B8_ChartSongSpaceComboBox, B8_ExclusiveAudioComboBox, I32_BarDivisionComboBox,
+			F32_TimelineScrollSensitivity, F32_ExponentialSpeed,
+			I32_AudioBufferFrameSize,
+		};
 
 		struct SettingsEntry
 		{
@@ -176,7 +181,7 @@ namespace PeepoDrumKit
 			addGroupPadding(GuiScale(2.0f));
 			{
 				Gui::AlignTextToFramePadding();
-				Gui::PushFont(FontMedium_EN);
+				Gui::PushFont(FontMain, GuiScaleI32_AtTarget(FontBaseSizes::Medium));
 				GuiTextWithCategoryHighlight(in.Header);
 				Gui::PopFont();
 
@@ -222,6 +227,20 @@ namespace PeepoDrumKit
 							}
 							Gui::EndCombo();
 						}
+					}
+					else if (in.Widget == WidgetType::I32_AudioBufferFrameSize)
+					{
+						// see AudioTestWindow::AudioEngineTabContent()
+						Gui::BeginDisabled();
+						u32 currentBufferFrameCount = Audio::Engine.GetBufferFrameSize();
+						Gui::SetNextItemWidth(-1.0f);
+						Gui::InputScalar("##CurrentBufferSize", ImGuiDataType_U32, &currentBufferFrameCount, PtrArg<u32>(8), PtrArg<u32>(64), "%u Frames (Current)");
+						Gui::EndDisabled();
+
+						Gui::SetNextItemWidth(-1.0f);
+						changesWereMade |= Gui::InputScalar("##NewBufferSize", ImGuiDataType_U32, &inOutI32->Value, PtrArg<u32>(8), PtrArg<u32>(64), "%u Frames (Request)");
+						if (changesWereMade)
+							inOutI32->Value = std::clamp(inOutI32->Value, 0, i32{ Audio::Engine.MaxBufferFrameCount });
 					}
 					else
 					{
@@ -415,7 +434,7 @@ namespace PeepoDrumKit
 			{
 				Gui::UpdateSmoothScrollWindow();
 
-				Gui::PushFont(FontMedium_EN);
+				Gui::PushFont(FontMain, GuiScaleI32_AtTarget(FontBaseSizes::Medium));
 				Gui::TableSetupScrollFreeze(0, 1);
 				Gui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, Gui::CalcTextSize("(Default)").x + Gui::GetFrameHeight());
 				Gui::TableSetupColumn("Action", ImGuiTableColumnFlags_None);
@@ -486,7 +505,7 @@ namespace PeepoDrumKit
 					else
 					{
 						// NOTE: Use a chouonpu here instead of a regular minus for a more readable and thicker glyph at smaller font sizes
-						Gui::TextDisabled("\xE3\x83\xBC"); // u8"�[" // "-" // "(None)"
+						Gui::TextDisabled(u8"ー"); // u8"ー" // "-" // "(None)"
 					}
 
 					Gui::PopID();
@@ -521,7 +540,7 @@ namespace PeepoDrumKit
 				Gui::PushStyleVar(ImGuiStyleVar_FramePadding, GuiScale(vec2(8.0f, 6.0f)));
 				Gui::PushStyleColor(ImGuiCol_Border, Gui::GetStyleColorVec4(ImGuiCol_TableBorderStrong));
 				Gui::SetNextWindowPos(Gui::GetMousePos(), ImGuiCond_Appearing, vec2(0.0f, 0.0f));
-				Gui::PushFont(FontMedium_EN);
+				Gui::PushFont(FontMain, GuiScaleI32_AtTarget(FontBaseSizes::Medium));
 				Gui::Begin(selectedBindingName, nullptr, allowInputWindowFlag | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoDocking);
 				{
 					if ((Gui::IsMouseClicked(ImGuiMouseButton_Left, false) && !Gui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows | ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)) ||
@@ -772,6 +791,7 @@ namespace PeepoDrumKit
 						{ &settings.Input.Timeline_SelectAll, "Timeline: Select All", },
 						{ &settings.Input.Timeline_ClearSelection, "Timeline: Clear Selection", },
 						{ &settings.Input.Timeline_InvertSelection, "Timeline: Invert Selection", },
+						{ &settings.Input.Timeline_SelectToChartEnd, "Timeline: Select to End of Chart", },
 						{ &settings.Input.Timeline_SelectAllWithinRangeSelection, "Timeline: Select All within Range Selection", },
 						{ &settings.Input.Timeline_ShiftSelectionLeft, "Timeline: Shift selection Left", },
 						{ &settings.Input.Timeline_ShiftSelectionRight, "Timeline: Shift selection Right", },
@@ -788,12 +808,20 @@ namespace PeepoDrumKit
 						{ &settings.Input.Timeline_ConvertSelectionToScrollChanges, "Timeline: Convert Selection to Scroll Changes", },
 						{ &settings.Input.Timeline_FlipNoteType, "Timeline: Flip Note Type", },
 						{ &settings.Input.Timeline_ToggleNoteSize, "Timeline: Toggle Note Size", },
-						{ &settings.Input.Timeline_ExpandItemTime_2To1, "Timeline: Expand Item Time 2:1", },
-						{ &settings.Input.Timeline_ExpandItemTime_3To2, "Timeline: Expand Item Time 3:2", },
-						{ &settings.Input.Timeline_ExpandItemTime_4To3, "Timeline: Expand Item Time 4:3", },
-						{ &settings.Input.Timeline_CompressItemTime_1To2, "Timeline: Compress Item Time 1:2", },
-						{ &settings.Input.Timeline_CompressItemTime_2To3, "Timeline: Compress Item Time 2:3", },
-						{ &settings.Input.Timeline_CompressItemTime_3To4, "Timeline: Compress Item Time 3:4", },
+						{ &settings.Input.Timeline_ExpandItemTime_2To1, "Timeline: Expand Item/Range Time 2:1", },
+						{ &settings.Input.Timeline_ExpandItemTime_3To2, "Timeline: Expand Item/Range Time 3:2", },
+						{ &settings.Input.Timeline_ExpandItemTime_4To3, "Timeline: Expand Item/Range Time 4:3", },
+						{ &settings.Input.Timeline_CompressItemTime_1To2, "Timeline: Compress Item/Range Time 1:2", },
+						{ &settings.Input.Timeline_CompressItemTime_2To3, "Timeline: Compress Item/Range Time 2:3", },
+						{ &settings.Input.Timeline_CompressItemTime_3To4, "Timeline: Compress Item/Range Time 3:4", },
+						{ &settings.Input.Timeline_CompressItemTime_0To1, "Timeline: Compress Item/Range Time 0:1", },
+						{ &settings.Input.Timeline_ReverseItemTime_N1To1, "Timeline: Reverse Item/Range Time -1:1", },
+						{ &settings.Input.Timeline_ScaleItemTime_CustomA, "Timeline: Scale Item/Range Time Custom A", },
+						{ &settings.Input.Timeline_ScaleItemTime_CustomB, "Timeline: Scale Item/Range Time Custom B", },
+						{ &settings.Input.Timeline_ScaleItemTime_CustomC, "Timeline: Scale Item/Range Time Custom C", },
+						{ &settings.Input.Timeline_ScaleItemTime_CustomD, "Timeline: Scale Item/Range Time Custom D", },
+						{ &settings.Input.Timeline_ScaleItemTime_CustomE, "Timeline: Scale Item/Range Time Custom E", },
+						{ &settings.Input.Timeline_ScaleItemTime_CustomF, "Timeline: Scale Item/Range Time Custom F", },
 						{ &settings.Input.Timeline_StepCursorLeft, "Timeline: Step Cursor Left", },
 						{ &settings.Input.Timeline_StepCursorRight, "Timeline: Step Cursor Right", },
 						{ &settings.Input.Timeline_JumpToTimelineStart, "Timeline: Jump to Timeline Start", },
@@ -868,6 +896,13 @@ namespace PeepoDrumKit
 							"Reduce audio latency by requesting exlusive device access.\n"
 							"This will prevent all *other* applications from playing back or recording audio.",
 							SettingsGui::WidgetType::B8_ExclusiveAudioComboBox),
+
+						SettingsGui::SettingsEntry(
+							settings.Audio.BufferFrameSize,
+							"Buffer Frame Size",
+							"Prevent audio distortion by requesting sufficient buffer size (adding audio latency).\n"
+							"The minimum resulting size is the minimum possible size reported by the device.",
+							SettingsGui::WidgetType::I32_AudioBufferFrameSize),
 					};
 
 					changesWereMade |= SettingsGui::DrawEntriesListTableGui(settingsEntriesAudio, ArrayCount(settingsEntriesAudio), nullptr, lastActiveGroup);

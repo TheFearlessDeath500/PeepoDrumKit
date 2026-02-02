@@ -1,4 +1,5 @@
 ﻿#pragma once
+#include "core_string.h"
 #include "core_types.h"
 #include "imgui/imgui_include.h"
 
@@ -73,6 +74,7 @@ X("ACT_FILE_SAVE_AS",								"Save As...") \
 /* selection menu */ \
 X("ACT_SELECTION_REFINE",							"Refine Selection") \
 X("ACT_SELECTION_SELECT_ALL",						"Select All") \
+X("ACT_SELECTION_SELECT_TO_CHART_END",				"Select to End of Chart") \
 X("ACT_SELECTION_CLEAR",							"Clear Selection") \
 X("ACT_SELECTION_INVERT",							"Invert Selection") \
 X("ACT_SELECTION_START_RANGE",						"Start Range Selection") \
@@ -90,14 +92,24 @@ X("PROMPT_SELECTION_CUSTOM_PATTERN_DELETE",			"Delete?") \
 /* transform menu */ \
 X("ACT_TRANSFORM_FLIP_NOTE_TYPES",					"Flip Note Types") \
 X("ACT_TRANSFORM_TOGGLE_NOTE_SIZES",				"Toggle Note Sizes") \
-X("ACT_TRANSFORM_EXPAND_ITEMS",						"Expand Items") \
-X("ACT_TRANSFORM_COMPRESS_ITEMS",					"Compress Items") \
+X("ACT_TRANSFORM_SCALE_ITEMS",						"Scale Items") \
+X("ACT_TRANSFORM_SCALE_RANGE",						"Scale Range") \
+X("ACT_TRANSFORM_SCALE_BY_TEMPO",					"Scale by Tempo") \
+X("ACT_TRANSFORM_SCALE_KEEP_TIME_POSITION",			"Keep Time Position") \
+X("ACT_TRANSFORM_SCALE_KEEP_TIME_SIGNATURE",		"Keep Time Signature") \
+X("ACT_TRANSFORM_SCALE_KEEP_ITEM_DURATION",			"Keep Item Duration") \
 X("ACT_TRANSFORM_RATIO_2_1",						"2:1 (8th to 4th)") \
 X("ACT_TRANSFORM_RATIO_3_2",						"3:2 (12th to 8th)") \
 X("ACT_TRANSFORM_RATIO_4_3",						"4:3 (16th to 12th)") \
 X("ACT_TRANSFORM_RATIO_1_2",						"1:2 (4th to 8th)") \
 X("ACT_TRANSFORM_RATIO_2_3",						"2:3 (8th to 12th)") \
 X("ACT_TRANSFORM_RATIO_3_4",						"3:4 (12th to 16th)") \
+X("ACT_TRANSFORM_RATIO_0_1",						"0:1 (remove time)") \
+X("ACT_TRANSFORM_RATIO_N1_1_TIME",					"-1:1 (reverse time)") \
+X("ACT_TRANSFORM_RATIO_N1_1_SCROLL",				"-1:1 (reverse scroll)") \
+X("ACT_TRANSFORM_ADD_NEW_RATIO",					"Add New Ratio...") \
+X("ACT_TRANSFORM_CUSTOM_RATIO",						"Select Custom Ratio") \
+X("INFO_TRANSFORM_CUSTOM_RATIO_DELETE",				"Input 0:0 to delete") \
 /* window menu */ \
 X("ACT_WINDOW_TOGGLE_VSYNC",						"Toggle VSync") \
 X("ACT_WINDOW_TOGGLE_FULLSCREEN",					"Toggle Fullscreen") \
@@ -130,6 +142,15 @@ X("BUILD_CONFIGURATION_UNKNOWN",					"Unknown") \
 /* difficulty menu */ \
 X("MENU_COURSES",									"Courses") \
 X("ACT_COURSES_ADD_NEW",							"Add New") \
+X("ACT_COURSES_COMPARE_GROUP",						"Compare") \
+X("ACT_COURSES_COMPARE_ALL",						"Compare All") \
+X("ACT_COURSES_COMPARE_NONE",						"Clear Comparison") \
+X("ACT_COURSES_COMPARE_ACROSS_DIFFICULTIES",		"Across Difficulties") \
+X("ACT_COURSES_COMPARE_ACROSS_PLAYERCOUNTS",		"Across Player Counts") \
+X("ACT_COURSES_COMPARE_ACROSS_PLAYERSIDES",			"Across Player Sides") \
+X("ACT_COURSES_COMPARE_ACROSS_BRANCHES",			"Across Branches") \
+X("ACT_COURSES_COMPARE_MODE",						"Comparison Mode") \
+X("ACT_COURSES_COMPARE_THIS",						"Compare This") \
 X("ACT_COURSES_EDIT",								"Edit...") \
 /* audio menu */ \
 X("ACT_AUDIO_OPEN_DEVICE",							"Open Audio Device") \
@@ -177,19 +198,26 @@ X("ACT_EVENT_SET_FROM_RANGE_SELECTION",				"Set from Range Selection") \
 /* chart properties tab */ \
 X("DETAILS_CHART_PROPERTIES_CHART",					"Chart") \
 X("CHART_PROP_TITLE",								"Chart Title") \
+X("DETAILS_CHART_PROP_TITLE_LOCALIZED",				"Chart Title Localized") \
 X("CHART_PROP_SUBTITLE",							"Chart Subtitle") \
+X("DETAILS_CHART_PROP_SUBTITLE_LOCALIZED",			"Chart Subtitle Localized") \
+X("ACT_ADD_NEW_LOCALE",								"Add New Locale:") \
 X("CHART_PROP_CREATOR",								"Chart Creator") \
 X("CHART_PROP_SONG_FILE_NAME",						"Song File Name") \
 X("CHART_PROP_JACKET_FILE_NAME",					"Jacket File Name") \
 X("CHART_PROP_SONG_VOLUME",							"Song Volume") \
 X("CHART_PROP_SOUND_EFFECT_VOLUME",					"Sound Effect Volume") \
+X("DETAILS_CHART_PROP_OTHER_METADATA",				"Other Chart Metadata") \
 X("DETAILS_CHART_PROPERTIES_COURSE",				"Selected Course") \
 X("COURSE_PROP_DIFFICULTY_TYPE",					"Difficulty Type") \
 X("COURSE_PROP_DIFFICULTY_LEVEL",					"Difficulty Level") \
 X("COURSE_PROP_DIFFICULTY_LEVEL_DECIMAL",			"Difficulty Level Decimal") \
+X("COURSE_PROP_PLAYER_SIDE_COUNT",					"Player Side/Count") \
 X("COURSE_PROP_TOWER_LIFE",							"Lives") \
 X("COURSE_PROP_TOWER_SIDE",							"Side") \
 X("COURSE_PROP_CREATOR",							"Course Creator") \
+X("DETAILS_COURSE_PROP_OTHER_METADATA",				"Other Course Metadata") \
+X("ACT_ADD_NEW_METADATA",							"Add New Metadata:") \
 /* inspector tab / timeline tab (contd.) */ \
 X("DETAILS_INSPECTOR_SELECTED_ITEMS",				"Selected Items") \
 X("INFO_INSPECTOR_NOTHING_SELECTED",				"( Nothing Selected )") \
@@ -223,8 +251,11 @@ X("NOTE_TYPE_DRUMROLL",								"Drumroll") \
 X("NOTE_TYPE_DRUMROLL_BIG",							"DRUMROLL") \
 X("NOTE_TYPE_BALLOON",								"Balloon") \
 X("NOTE_TYPE_BALLOON_EX",							"BALLOON") \
+X("NOTE_TYPE_DON_HAND",								"DON (Hand)") \
+X("NOTE_TYPE_KA_HAND",								"KA (Hand)") \
 X("NOTE_TYPE_SIZE_SMALL",							"Small") \
 X("NOTE_TYPE_SIZE_BIG",								"Big") \
+X("NOTE_TYPE_SIZE_HAND",							"Hand") \
 /* difficulty menu (contd) */ \
 X("DIFFICULTY_TYPE_EASY",							"Easy") \
 X("DIFFICULTY_TYPE_NORMAL",							"Normal") \
@@ -235,8 +266,11 @@ X("DIFFICULTY_TYPE_TOWER",							"Tower") \
 X("DIFFICULTY_TYPE_DAN",							"Dan") \
 X("PLAYER_SIDE_STYLE_SINGLE",						"Single") \
 X("PLAYER_SIDE_STYLE_DOUBLE",						"Double") \
-X("SIDE_NORMAL",									"Sweet (Normal)") \
-X("SIDE_EX",										"Spicy (Ex)") \
+X("PLAYER_SIDE_STYLE_FMT_%d_STYLE",					"%d-players") \
+X("PLAYER_SIDE_PLAYER_FMT_%d_PLAYER",				"P%d") \
+X("TOWER_SIDE_NORMAL",								"Sweet (Normal)") \
+X("TOWER_SIDE_EX",									"Spicy (Ex)") \
+X("TOWER_SIDE_BOTH",								"Unspecified (Both)") \
 /* undo history tab */ \
 X("UNDO_HISTORY_DESCRIPTION",						"Description") \
 X("UNDO_HISTORY_TIME",								"Time") \
@@ -274,6 +308,7 @@ X("ACT_LANGUAGE_LOAD_FULL_CJKV_GLYPHS",				"Load Full CJKV Glyphs (slow)") \
 namespace PeepoDrumKit
 {
 	inline std::string SelectedGuiLanguage = std::string("en");
+	inline std::string SelectedGuiLanguageTJA = ASCII::IETFLangTagToTJALangTag(SelectedGuiLanguage);
 }
 
 namespace PeepoDrumKit::i18n
